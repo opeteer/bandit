@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BANDIT // Live Audio Surveillance</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2300ff88'><path d='M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z'/><path d='M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12v-2h-2z'/></svg>">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Bar -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12v-2h-2z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>BANDIT</h1>
+          <span class="subtext">HOST AUDIO MONITOR // v1.0</span>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <div class="badge status-badge" id="connectionBadge">
+          <span class="status-dot"></span>
+          <span id="connectionText">DISCONNECTED</span>
+        </div>
+        <div class="badge security-badge" id="securityBadge" title="Click to change token">
+          <span class="security-icon">🔒</span>
+          <span id="securityText">AUTH REQUIRED</span>
+        </div>
+        <button id="authBtn" class="btn btn-sm btn-outline">Change Token</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Visualizer & VU Meter Section -->
+      <section class="visualizer-card">
+        <div class="card-header">
+          <div class="section-title">
+            <span class="indicator-led" id="audioActivityLed"></span>
+            <h2>LIVE FREQUENCY & WAVEFORM MONITOR</h2>
+          </div>
+          <div class="visualizer-controls">
+            <div class="mode-toggle">
+              <button class="mode-btn active" data-mode="waveform" id="btnModeWaveform">Oscilloscope</button>
+              <button class="mode-btn" data-mode="spectrum" id="btnModeSpectrum">Spectrum</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="canvas-wrapper">
+          <canvas id="visualizerCanvas" width="960" height="260"></canvas>
+          <div class="canvas-overlay" id="canvasOverlay">
+            <button class="btn btn-primary btn-large" id="btnStartListening">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              START LISTENING
+            </button>
+            <p class="overlay-note">Browser requires user interaction to initialize audio output</p>
+          </div>
+        </div>
+
+        <!-- VU Meter -->
+        <div class="vu-meter-container">
+          <div class="vu-labels">
+            <span>MIC LEVEL</span>
+            <span id="vuDbText">-∞ dB</span>
+          </div>
+          <div class="vu-meter-bar">
+            <div class="vu-meter-fill" id="vuMeterFill"></div>
+            <div class="vu-peak-indicator" id="vuPeakIndicator"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EasyEffects DSP Sound Rack Section -->
+      <section class="card dsp-card" id="dspCard">
+        <div class="card-header">
+          <div class="section-title">
+            <span class="dsp-icon">🎛️</span>
+            <h2>EASYEFFECTS DSP SOUND RACK</h2>
+          </div>
+          <div class="dsp-header-actions">
+            <span class="badge badge-dsp" id="activeDspBadge">BROADCAST</span>
+            <button class="btn btn-sm btn-outline" id="btnToggleDspPanel">Tuning Controls</button>
+          </div>
+        </div>
+
+        <div class="dsp-body" id="dspPanelBody">
+          <!-- Preset Selection Buttons -->
+          <div class="dsp-presets-grid" id="dspPresetsContainer">
+            <button class="btn-dsp-preset" data-preset="raw">
+              <span class="preset-icon">⚡</span>
+              <div class="preset-info">
+                <span class="preset-name">Raw / Flat</span>
+                <span class="preset-badge">BYPASS</span>
+              </div>
+            </button>
+            <button class="btn-dsp-preset" data-preset="whisper">
+              <span class="preset-icon">🕵️</span>
+              <div class="preset-info">
+                <span class="preset-name">Whisper Boost</span>
+                <span class="preset-badge">SURVEILLANCE</span>
+              </div>
+            </button>
+            <button class="btn-dsp-preset active" data-preset="broadcast">
+              <span class="preset-icon">🎙️</span>
+              <div class="preset-info">
+                <span class="preset-name">Clean Voice</span>
+                <span class="preset-badge">BROADCAST</span>
+              </div>
+            </button>
+            <button class="btn-dsp-preset" data-preset="noise_rejection">
+              <span class="preset-icon">🔇</span>
+              <div class="preset-info">
+                <span class="preset-name">Noise Rejection</span>
+                <span class="preset-badge">DENOISE</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- DSP Active Features Pills -->
+          <div class="dsp-features-strip" id="dspFeaturesStrip">
+            <span class="feature-pill active" id="featHighPass"><span class="pill-dot"></span> Low-Cut (80Hz)</span>
+            <span class="feature-pill active" id="featDenoise"><span class="pill-dot"></span> Neural Denoise</span>
+            <span class="feature-pill active" id="featGate"><span class="pill-dot"></span> Noise Gate</span>
+            <span class="feature-pill active" id="featEq"><span class="pill-dot"></span> Vocal Presence EQ</span>
+            <span class="feature-pill active" id="featComp"><span class="pill-dot"></span> Broadcast Compressor</span>
+            <span class="feature-pill active" id="featLimiter"><span class="pill-dot"></span> Peak Limiter</span>
+          </div>
+
+          <p class="dsp-description-text" id="dspPresetDescription">
+            Studio-quality speech clarity based on EasyEffects broadcast profiles. Noise gate, neural denoiser, vocal presence EQ, de-esser, and smooth radio leveling.
+          </p>
+
+          <!-- Real-Time Parameter Sliders (Collapsible / expandable) -->
+          <div class="dsp-tuning-controls" id="dspTuningControls">
+            <div class="tuning-col">
+              <div class="control-label">
+                <span>Noise Gate Threshold</span>
+                <span id="dspGateVal">-34 dB</span>
+              </div>
+              <input type="range" id="sliderGateThreshold" min="-50" max="-15" step="1" value="-34" class="slider">
+              <small class="control-hint">Cuts room hiss when nobody is talking</small>
+            </div>
+
+            <div class="tuning-col">
+              <div class="control-label">
+                <span>Denoise Intensity</span>
+                <span id="dspDenoiseVal">-25 dB</span>
+              </div>
+              <input type="range" id="sliderDenoiseNf" min="-40" max="-10" step="1" value="-25" class="slider">
+              <small class="control-hint">Spectral background noise suppression</small>
+            </div>
+
+            <div class="tuning-col">
+              <div class="control-label">
+                <span>Voice Presence Boost</span>
+                <span id="dspBoostVal">+3.0 dB</span>
+              </div>
+              <input type="range" id="sliderVoiceBoost" min="0" max="6" step="0.5" value="3.0" class="slider accent-slider">
+              <small class="control-hint">Consonant clarity enhancement (3.2 kHz)</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Control Deck -->
+      <section class="control-deck">
+        <!-- Player Controls Card -->
+        <div class="card player-card">
+          <div class="card-header">
+            <h3>AUDIO PLAYBACK</h3>
+            <span class="badge" id="streamHealthBadge">IDLE</span>
+          </div>
+          <div class="card-body">
+            <div class="playback-actions">
+              <button class="btn btn-action" id="btnTogglePlay" disabled>
+                <span id="playIcon">▶</span>
+                <span id="playText">PLAY</span>
+              </button>
+              <button class="btn btn-action btn-secondary" id="btnToggleMute">
+                <span id="muteIcon">🔊</span>
+                <span id="muteText">MUTE</span>
+              </button>
+              <button class="btn btn-action btn-secondary" id="btnReconnect">
+                <span>🔄</span>
+                <span>RECONNECT</span>
+              </button>
+            </div>
+
+            <!-- Volume Sliders -->
+            <div class="control-group">
+              <div class="control-label">
+                <span>Output Volume</span>
+                <span id="volumeValue">100%</span>
+              </div>
+              <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" class="slider">
+            </div>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>Microphone Gain Boost</span>
+                <span id="gainValue">1.0x</span>
+              </div>
+              <input type="range" id="gainSlider" min="1" max="5" step="0.1" value="1" class="slider accent-slider">
+              <small class="control-hint">Amplify faint ambient sounds and distant whispers (up to 5x boost)</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry & Stream Metrics Card -->
+        <div class="card metrics-card">
+          <div class="card-header">
+            <h3>REAL-TIME TELEMETRY</h3>
+            <span class="badge badge-info" id="formatBadge">PCM 24kHz</span>
+          </div>
+          <div class="card-body">
+            <div class="metrics-grid">
+              <div class="metric-item">
+                <span class="metric-label">ROUND-TRIP LATENCY</span>
+                <span class="metric-value highlight" id="latencyVal">-- ms</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">STREAM BUFFER</span>
+                <span class="metric-value" id="bufferHealthVal">-- ms</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">DATA THROUGHPUT</span>
+                <span class="metric-value" id="dataRateVal">0.0 KB/s</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">TOTAL RECEIVED</span>
+                <span class="metric-value" id="totalDataVal">0.0 MB</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">ACTIVE LISTENERS</span>
+                <span class="metric-value" id="listenersVal">1</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-label">SESSION UPTIME</span>
+                <span class="metric-value" id="uptimeVal">00:00:00</span>
+              </div>
+            </div>
+
+            <!-- Host Device Selector -->
+            <div class="device-selector-group">
+              <label for="deviceSelect">Host Capture Device:</label>
+              <div class="device-select-row">
+                <select id="deviceSelect" class="form-select">
+                  <option value="default">Loading devices...</option>
+                </select>
+                <button id="btnSwitchDevice" class="btn btn-sm btn-outline">Apply</button>
+              </div>
+              <small id="deviceNote" class="control-hint">Current: Auto-detected default</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 48-Hour Automatic Recording Vault Section -->
+      <section class="card recordings-card" id="recordingsCard">
+        <div class="card-header">
+          <div class="section-title">
+            <span class="rec-icon">📼</span>
+            <h2>48-HOUR AUTOMATIC RECORDING VAULT</h2>
+          </div>
+          <div class="rec-header-actions">
+            <div class="badge rec-status-badge active" id="recLiveBadge">
+              <span class="rec-pulsing-dot"></span>
+              <span id="recLiveText">REC LIVE (1H/SEGMENT)</span>
+            </div>
+            <span class="badge badge-info" title="Files older than 48 hours are automatically purged">48H ROLLING RETENTION</span>
+            <button class="btn btn-sm btn-outline" id="btnRefreshRecordings" title="Refresh vault list">🔄 Refresh</button>
+            <button class="btn btn-sm btn-outline" id="btnToggleRecording" title="Toggle automatic continuous recording">Pause REC</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Active Segment & Storage Metrics -->
+          <div class="rec-banner" id="recCurrentBanner">
+            <div class="rec-current-info">
+              <div class="rec-current-title">
+                <span class="rec-active-indicator">● ACTIVE RECORDING SEGMENT:</span>
+                <span class="rec-filename" id="currentSegmentName">bandit_rec_loading.mp3</span>
+              </div>
+              <div class="rec-progress-container">
+                <div class="rec-progress-bar">
+                  <div class="rec-progress-fill" id="recProgressFill" style="width: 0%;"></div>
+                </div>
+                <div class="rec-timer-labels">
+                  <span id="recElapsedTime">00:00:00</span>
+                  <span class="rec-limit-hint">Max: 01:00:00 (Rotates hourly)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="rec-stats-strip">
+              <div class="stat-pill">
+                <span class="stat-num" id="totalRecFiles">0</span>
+                <span class="stat-label">STORED ITEMS</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-num" id="totalRecSize">0 B</span>
+                <span class="stat-label">TOTAL STORAGE</span>
+              </div>
+              <div class="stat-pill">
+                <span class="stat-num" id="recRetentionPeriod">48h</span>
+                <span class="stat-label">ROLLING WINDOW</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Built-in Audio Player for Vault Items -->
+          <div class="vault-player-box" id="vaultPlayerBox">
+            <div class="vault-player-info">
+              <span class="player-label">VAULT PLAYBACK:</span>
+              <span class="player-title" id="vaultPlayerTitle">Select a recording segment below to listen</span>
+            </div>
+            <audio id="vaultAudioPlayer" controls preload="metadata" class="vault-audio-element"></audio>
+          </div>
+
+          <!-- Recordings Table / List -->
+          <div class="recordings-table-wrapper">
+            <table class="recordings-table" id="recordingsTable">
+              <thead>
+                <tr>
+                  <th>STATUS</th>
+                  <th>RECORDING ITEM</th>
+                  <th>FILE SIZE</th>
+                  <th>AGE (HOURS)</th>
+                  <th>RECORDED TIMESTAMP</th>
+                  <th style="text-align: right;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="recordingsTableBody">
+                <tr class="empty-row">
+                  <td colspan="6">Loading 48-hour recording archive...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>BANDIT Ultra-Low Latency Audio Surveillance System</div>
+      <div id="hostSystemInfo">Host: Linux x64</div>
+    </footer>
+  </div>
+
+  <!-- Token Modal -->
+  <div class="modal-backdrop" id="authModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>AUTHENTICATION</h3>
+        <button class="modal-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>This Bandit instance is protected. Enter your access token to decrypt and stream host audio.</p>
+        <div class="form-group">
+          <label for="tokenInput">Access Token / Password:</label>
+          <input type="password" id="tokenInput" class="form-input" placeholder="Enter AUTH_TOKEN" autocomplete="current-password">
+        </div>
+        <div id="authErrorMessage" class="auth-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelModal">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveToken">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

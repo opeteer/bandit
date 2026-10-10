@@ -1,0 +1,28 @@
+services:
+  bandit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bandit:latest
+    container_name: bandit-surveillance
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    # Direct hardware audio passthrough for Linux ALSA
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    # Persistent storage for 48-hour recording vault
+    volumes:
+      - ./recordings:/app/recordings
+    # IPC and shm configurations for low latency
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
