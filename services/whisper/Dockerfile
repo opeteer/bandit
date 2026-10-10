@@ -24,9 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy microservice code
 COPY app.py ./
 
-EXPOSE 8000
+EXPOSE 9099
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:9099/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9099"]
+

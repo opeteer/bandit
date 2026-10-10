@@ -324,7 +324,7 @@ Bandit includes a dedicated speech intelligence subsystem powered by OpenAI Whis
 | `RECORDINGS_DIR` | `./recordings` | Directory path where recording segments are stored. |
 | `RECORDING_FORMAT` | `mp3` | Encoding format (`mp3` or `wav`). |
 | `RECORDING_BITRATE` | `64k` | MP3 bitrate (default: `64k` mono voice). |
-| `WHISPER_BASE_URL` | `http://localhost:8000/v1` | URL for the local Whisper container (`http://bandit-whisper:8000/v1` in Docker Compose). |
+| `WHISPER_BASE_URL` | `http://localhost:9099/v1` | URL for the local Whisper container (`http://bandit-whisper:9099/v1` in Docker Compose). |
 | `WHISPER_MODEL` | `small` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large-v3`). |
 | `WHISPER_MAX_SPEAKERS` | `4` | Maximum distinct speakers to cluster in diarization (default: `4`). |
 | `WHISPER_MIN_SEGMENT_SEC` | `0.8` | Minimum segment duration threshold in seconds to smooth short transients (default: `0.8`). |
@@ -390,7 +390,7 @@ curl -s http://localhost:8099/api/status | jq .
 curl -s "http://localhost:8099/api/devices?token=your-token" | jq .
 
 # Check Whisper container health
-curl -s http://localhost:8000/health | jq .
+curl -s http://localhost:9099/health | jq .
 
 # Query Whisper config & model size
 curl -s "http://localhost:8099/api/analysis/config?token=your-token" | jq .

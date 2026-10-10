@@ -12,7 +12,7 @@ const { spawn } = require('child_process');
 
 class WhisperAnalyzer {
   constructor(options = {}) {
-    this.whisperBaseUrl = options.whisperBaseUrl || process.env.WHISPER_BASE_URL || 'http://localhost:8000/v1';
+    this.whisperBaseUrl = options.whisperBaseUrl || process.env.WHISPER_BASE_URL || 'http://localhost:9099/v1';
     this.openaiApiKey = options.openaiApiKey || process.env.OPENAI_API_KEY || '';
     this.model = options.model || process.env.WHISPER_MODEL || 'small';
     this.maxSpeakers = parseInt(options.maxSpeakers || process.env.WHISPER_MAX_SPEAKERS || '4', 10);

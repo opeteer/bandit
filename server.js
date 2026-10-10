@@ -55,7 +55,7 @@ const recordingManager = new RecordingManager({
 
 // Initialize Local Whisper STT & Audio Analysis Engine
 const whisperAnalyzer = new WhisperAnalyzer({
-  whisperBaseUrl: process.env.WHISPER_BASE_URL || 'http://localhost:8000/v1',
+  whisperBaseUrl: process.env.WHISPER_BASE_URL || 'http://localhost:9099/v1',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   model: process.env.WHISPER_MODEL || 'small',
   maxSpeakers: process.env.WHISPER_MAX_SPEAKERS || '4',
