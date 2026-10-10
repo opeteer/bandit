@@ -24,7 +24,7 @@ COPY src/ ./src/
 COPY public/ ./public/
 
 # Default environment configurations
-ENV PORT=8080 \
+ENV PORT=8099 \
     HOST=0.0.0.0 \
     NODE_ENV=production \
     AUDIO_DEVICE=default \
@@ -34,9 +34,9 @@ ENV PORT=8080 \
     CHUNK_MS=40 \
     CAPTURE_MODE=continuous
 
-EXPOSE 8080
+EXPOSE 8099
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/api/status || exit 1
+  CMD curl -f http://localhost:8099/api/status || exit 1
 
 CMD ["node", "server.js"]

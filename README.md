@@ -66,7 +66,7 @@ docker compose up -d
 ### 3. Open Dashboard
 Open your web browser at:
 ```
-http://localhost:8080
+http://localhost:8099
 ```
 Enter your `AUTH_TOKEN` when prompted and click **"Start Listening"**.
 
@@ -257,7 +257,7 @@ Bandit features an autonomous 24/7 rolling surveillance recording system:
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `PORT` | `8080` | Port for HTTP server and WebSocket stream. |
+| `PORT` | `8099` | Port for HTTP server and WebSocket stream. |
 | `HOST` | `0.0.0.0` | Host bind address (`0.0.0.0` for network-wide access). |
 | `AUTH_TOKEN` | `""` | Secret password/token. If set, clients must authenticate. If empty, stream is public. |
 | `AUDIO_DEVICE` | `auto` | Input device identifier (`auto`, `default`, `hw:0,0`, `audio="..."`, or `test`). |
@@ -285,7 +285,7 @@ When accessing Bandit remotely over the internet, keep `AUTH_TOKEN` enabled and 
 ### 1. Cloudflare Tunnel (Recommended)
 1. Install `cloudflared`:
    ```bash
-   cloudflared tunnel --url http://localhost:8080
+   cloudflared tunnel --url http://localhost:8099
    ```
 2. Cloudflare will assign a secure HTTPS/WSS URL (e.g., `https://random-subdomain.trycloudflare.com`).
 3. Connect from any remote mobile phone or laptop. WebSockets and audio streaming pass through seamlessly.
@@ -297,7 +297,7 @@ When accessing Bandit remotely over the internet, keep `AUTH_TOKEN` enabled and 
    ```
 2. Enable Tailscale Funnel or access directly via your Tailscale IP:
    ```bash
-   tailscale funnel 8080
+   tailscale funnel 8099
    ```
 3. Access privately across your personal mesh network without opening firewall ports.
 
@@ -316,10 +316,10 @@ When accessing Bandit remotely over the internet, keep `AUTH_TOKEN` enabled and 
 ### Test the API
 ```bash
 # Check system status
-curl -s http://localhost:8080/api/status | jq .
+curl -s http://localhost:8099/api/status | jq .
 
 # Check devices (with token)
-curl -s "http://localhost:8080/api/devices?token=your-token" | jq .
+curl -s "http://localhost:8099/api/devices?token=your-token" | jq .
 ```
 
 ### Browser Autoplay Notice

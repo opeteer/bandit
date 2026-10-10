@@ -7,7 +7,7 @@ services:
     container_name: bandit-surveillance
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8099}:8099"
     env_file:
       - .env
     # Direct hardware audio passthrough for Linux ALSA
@@ -21,7 +21,7 @@ services:
     # IPC and shm configurations for low latency
     ipc: host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8099/api/status"]
       interval: 30s
       timeout: 5s
       retries: 3

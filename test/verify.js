@@ -6,8 +6,9 @@
 const http = require('http');
 const { WebSocket } = require('ws');
 
-const BASE_URL = 'http://127.0.0.1:8080';
-const WS_URL = 'ws://127.0.0.1:8080/stream';
+const PORT = process.env.PORT || '8099';
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+const WS_URL = `ws://127.0.0.1:${PORT}/stream`;
 const TEST_TOKEN = 'bandit123';
 
 function httpGet(path, headers = {}) {

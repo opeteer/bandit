@@ -16,7 +16,7 @@ const { isValidToken, extractToken, authMiddleware } = require('./src/auth');
 const { scanAudioDevices } = require('./src/deviceScanner');
 const { getDspPresetsList } = require('./src/dspFilters');
 
-const PORT = parseInt(process.env.PORT || '8080', 10);
+const PORT = parseInt(process.env.PORT || '8099', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const CAPTURE_MODE = (process.env.CAPTURE_MODE || 'continuous').toLowerCase();
 const AUTH_TOKEN = (process.env.AUTH_TOKEN || '').trim();
