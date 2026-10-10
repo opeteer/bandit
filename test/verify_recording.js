@@ -27,7 +27,7 @@ async function run() {
   fs.mkdirSync(TEST_DIR, { recursive: true });
 
   let testsPassed = 0;
-  const totalTests = 5;
+  const totalTests = 6;
 
   try {
     // -------------------------------------------------------------------------
@@ -275,6 +275,141 @@ async function run() {
 
     testServer.close();
     console.log('  PASS: HTTP 206 Partial Content range requests fully supported for browser seeking.');
+    testsPassed++;
+
+    // -------------------------------------------------------------------------
+    // TEST 6: Manual Turn OFF and Turn ON of Auto-Recording
+    // -------------------------------------------------------------------------
+    console.log('\n[Test 6] Testing manual turn off and turn on controls...');
+
+    // 6a. Turn ON manually and write chunks
+    recMgr.setEnabled(true);
+    if (!recMgr.enabled) {
+      throw new Error('Test 6 failed: setEnabled(true) did not set enabled to true');
+    }
+
+    recMgr.writeChunk(dummyChunk);
+    await new Promise(r => setTimeout(r, 100));
+
+    if (!recMgr.currentFile || !recMgr.currentProcess) {
+      throw new Error('Test 6 failed: Segment did not start after turning recording ON');
+    }
+    const activeFileBeforeDisable = recMgr.currentFile;
+    console.log(`  Active segment before disable: ${activeFileBeforeDisable}`);
+
+    // 6b. Turn OFF manually: verify active segment is cleanly finalized and state cleared
+    recMgr.setEnabled(false);
+    await new Promise(r => setTimeout(r, 400));
+
+    if (recMgr.enabled !== false) {
+      throw new Error('Test 6 failed: setEnabled(false) did not set enabled to false');
+    }
+    if (recMgr.currentProcess !== null) {
+      throw new Error('Test 6 failed: Active encoder process was not finalized on disable');
+    }
+    if (recMgr.currentFile !== null) {
+      throw new Error('Test 6 failed: currentFile was not cleared after turning off');
+    }
+
+    const statsWhenOff = recMgr.listRecordings().stats;
+    if (statsWhenOff.enabled !== false || statsWhenOff.isRecording !== false || statsWhenOff.currentSegment !== null) {
+      throw new Error('Test 6 failed: stats did not reflect disabled/paused state');
+    }
+    console.log('  Verified: Turn OFF cleanly finalized active segment and stopped encoder.');
+
+    // 6c. Feed chunks while disabled: verify nothing is recorded
+    for (let i = 0; i < 5; i++) {
+      recMgr.writeChunk(dummyChunk);
+    }
+    if (recMgr.currentProcess !== null || recMgr.currentFile !== null) {
+      throw new Error('Test 6 failed: Encoder spawned while recording was manually turned OFF');
+    }
+    console.log('  Verified: Audio chunks are completely ignored while recording is turned OFF.');
+
+    // 6d. Turn ON manually: verify new audio chunks start a new segment
+    recMgr.setEnabled(true);
+    if (recMgr.enabled !== true) {
+      throw new Error('Test 6 failed: Re-enabling recording failed');
+    }
+    recMgr.writeChunk(dummyChunk);
+    await new Promise(r => setTimeout(r, 100));
+
+    if (!recMgr.currentFile || !recMgr.currentProcess) {
+      throw new Error('Test 6 failed: New segment was not initiated after re-enabling');
+    }
+    console.log(`  New active segment after turn ON: ${recMgr.currentFile}`);
+
+    // 6e. Test toggle API endpoint with express testServer
+    const toggleApp = express();
+    toggleApp.use(express.json());
+    toggleApp.post('/api/recordings/toggle', (req, res) => {
+      const { enabled } = req.body || {};
+      if (typeof enabled === 'boolean') {
+        recMgr.setEnabled(enabled);
+      } else {
+        recMgr.toggle();
+      }
+      res.json({
+        success: true,
+        enabled: recMgr.enabled,
+        stats: recMgr.listRecordings().stats
+      });
+    });
+
+    const togglePort = 8190;
+    const toggleServer = http.createServer(toggleApp);
+    await new Promise(r => toggleServer.listen(togglePort, '127.0.0.1', r));
+
+    // Send POST { enabled: false }
+    const postToggleOff = await new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ enabled: false });
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: togglePort,
+        path: '/api/recordings/toggle',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+      }, (res) => {
+        let data = '';
+        res.on('data', d => data += d);
+        res.on('end', () => resolve(JSON.parse(data)));
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+
+    if (postToggleOff.enabled !== false || recMgr.enabled !== false) {
+      throw new Error('Test 6 failed: POST /api/recordings/toggle { enabled: false } failed');
+    }
+
+    // Send POST { enabled: true }
+    const postToggleOn = await new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ enabled: true });
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: togglePort,
+        path: '/api/recordings/toggle',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+      }, (res) => {
+        let data = '';
+        res.on('data', d => data += d);
+        res.on('end', () => resolve(JSON.parse(data)));
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+
+    if (postToggleOn.enabled !== true || recMgr.enabled !== true) {
+      throw new Error('Test 6 failed: POST /api/recordings/toggle { enabled: true } failed');
+    }
+
+    toggleServer.close();
+    recMgr.stop();
+    await new Promise(r => setTimeout(r, 400));
+    console.log('  PASS: Manual turn off and turn on controls fully verified across manager and API.');
     testsPassed++;
 
     console.log(`\n======================================================`);

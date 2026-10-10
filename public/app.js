@@ -121,7 +121,11 @@
   const recLiveText = document.getElementById('recLiveText');
   const btnRefreshRecordings = document.getElementById('btnRefreshRecordings');
   const btnToggleRecording = document.getElementById('btnToggleRecording');
+  const recCurrentBanner = document.getElementById('recCurrentBanner');
+  const recActiveIndicator = document.getElementById('recActiveIndicator');
   const currentSegmentName = document.getElementById('currentSegmentName');
+  const recPausedNotice = document.getElementById('recPausedNotice');
+  const btnResumeRecNotice = document.getElementById('btnResumeRecNotice');
   const recProgressFill = document.getElementById('recProgressFill');
   const recElapsedTime = document.getElementById('recElapsedTime');
   const totalRecFiles = document.getElementById('totalRecFiles');
@@ -961,19 +965,44 @@
   }
 
   function updateSegmentUI() {
-    if (!activeSegmentState) return;
-    if (currentSegmentName) {
-      currentSegmentName.textContent = activeSegmentState.filename;
-    }
-    const elapsed = activeSegmentState.elapsedSeconds || 0;
-    const maxSec = activeSegmentState.maxSeconds || 3600;
-    const pct = Math.min(100, Math.max(0, (elapsed / maxSec) * 100));
+    if (activeSegmentState && isRecordingActive) {
+      if (recCurrentBanner) recCurrentBanner.classList.remove('is-paused');
+      if (recActiveIndicator) {
+        recActiveIndicator.textContent = '● ACTIVE RECORDING SEGMENT:';
+        recActiveIndicator.className = 'rec-active-indicator';
+      }
+      if (currentSegmentName) {
+        currentSegmentName.textContent = activeSegmentState.filename;
+        currentSegmentName.style.display = 'inline-block';
+      }
+      if (recPausedNotice) recPausedNotice.classList.add('hidden');
+      const elapsed = activeSegmentState.elapsedSeconds || 0;
+      const maxSec = activeSegmentState.maxSeconds || 3600;
+      const pct = Math.min(100, Math.max(0, (elapsed / maxSec) * 100));
 
-    if (recProgressFill) {
-      recProgressFill.style.width = `${pct.toFixed(1)}%`;
-    }
-    if (recElapsedTime) {
-      recElapsedTime.textContent = `${formatDuration(elapsed)} / ${formatDuration(maxSec)}`;
+      if (recProgressFill) {
+        recProgressFill.style.width = `${pct.toFixed(1)}%`;
+      }
+      if (recElapsedTime) {
+        recElapsedTime.textContent = `${formatDuration(elapsed)} / ${formatDuration(maxSec)}`;
+      }
+    } else {
+      if (recCurrentBanner) recCurrentBanner.classList.add('is-paused');
+      if (recActiveIndicator) {
+        recActiveIndicator.textContent = '⏸️ AUTO RECORDING:';
+        recActiveIndicator.className = 'rec-active-indicator paused';
+      }
+      if (currentSegmentName) {
+        currentSegmentName.textContent = 'PAUSED / TURNED OFF';
+        currentSegmentName.style.display = 'inline-block';
+      }
+      if (recPausedNotice) recPausedNotice.classList.remove('hidden');
+      if (recProgressFill) {
+        recProgressFill.style.width = '0%';
+      }
+      if (recElapsedTime) {
+        recElapsedTime.textContent = 'Paused (Click Turn ON to resume)';
+      }
     }
   }
 
@@ -988,17 +1017,28 @@
 
   function updateRecordingStats(stats) {
     if (!stats) return;
-    isRecordingActive = Boolean(stats.isRecording);
+    const isEnabled = stats.enabled !== undefined ? Boolean(stats.enabled) : Boolean(stats.isRecording);
+    isRecordingActive = isEnabled && Boolean(stats.isRecording);
 
     if (recLiveBadge) {
-      if (stats.isRecording) {
+      if (isEnabled) {
         recLiveBadge.className = 'badge rec-status-badge active';
         recLiveText.textContent = 'REC LIVE (1H/SEGMENT)';
-        if (btnToggleRecording) btnToggleRecording.textContent = 'Pause REC';
       } else {
         recLiveBadge.className = 'badge rec-status-badge paused';
-        recLiveText.textContent = 'REC PAUSED';
-        if (btnToggleRecording) btnToggleRecording.textContent = 'Resume REC';
+        recLiveText.textContent = 'REC OFF (MANUAL PAUSE)';
+      }
+    }
+
+    if (btnToggleRecording) {
+      if (isEnabled) {
+        btnToggleRecording.className = 'btn btn-sm btn-rec-toggle active';
+        btnToggleRecording.innerHTML = '<span class="toggle-icon">⏹</span> Turn OFF Auto Record';
+        btnToggleRecording.title = 'Click to manually turn off / pause automatic recording';
+      } else {
+        btnToggleRecording.className = 'btn btn-sm btn-rec-toggle paused';
+        btnToggleRecording.innerHTML = '<span class="toggle-icon">▶</span> Turn ON Auto Record';
+        btnToggleRecording.title = 'Click to manually turn on / resume automatic recording';
       }
     }
 
@@ -1012,15 +1052,17 @@
       totalRecSize.textContent = stats.totalSizeFormatted;
     }
 
-    if (stats.currentSegment) {
+    if (isEnabled && stats.currentSegment) {
       activeSegmentState = {
         filename: stats.currentSegment.filename,
         startTime: Date.now() - (stats.currentSegment.elapsedSeconds * 1000),
         elapsedSeconds: stats.currentSegment.elapsedSeconds,
         maxSeconds: stats.currentSegment.maxSeconds || 3600
       };
-      updateSegmentUI();
+    } else {
+      activeSegmentState = null;
     }
+    updateSegmentUI();
   }
 
   async function loadRecordings() {
@@ -1142,20 +1184,22 @@
     }
   }
 
-  async function toggleRecording() {
+  async function toggleRecording(desiredState = null) {
     const token = getStoredToken();
     try {
+      const payload = typeof desiredState === 'boolean' ? { enabled: desiredState } : {};
       const res = await fetch('/api/recordings/toggle', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({})
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const data = await res.json();
         updateRecordingStats(data.stats);
+        loadRecordings();
       }
     } catch (e) {
       console.error('[Vault] Error toggling recording:', e);
@@ -1168,6 +1212,10 @@
 
   if (btnToggleRecording) {
     btnToggleRecording.addEventListener('click', () => toggleRecording());
+  }
+
+  if (btnResumeRecNotice) {
+    btnResumeRecNotice.addEventListener('click', () => toggleRecording(true));
   }
 
   // ---------------------------------------------------------------------------

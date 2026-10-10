@@ -279,7 +279,9 @@
             </div>
             <span class="badge badge-info" title="Files older than 48 hours are automatically purged">48H ROLLING RETENTION</span>
             <button class="btn btn-sm btn-outline" id="btnRefreshRecordings" title="Refresh vault list">🔄 Refresh</button>
-            <button class="btn btn-sm btn-outline" id="btnToggleRecording" title="Toggle automatic continuous recording">Pause REC</button>
+            <button class="btn btn-sm btn-rec-toggle active" id="btnToggleRecording" title="Turn automatic continuous recording ON or OFF">
+              <span class="toggle-icon">⏹</span> Turn OFF Auto Record
+            </button>
           </div>
         </div>
 
@@ -288,16 +290,20 @@
           <div class="rec-banner" id="recCurrentBanner">
             <div class="rec-current-info">
               <div class="rec-current-title">
-                <span class="rec-active-indicator">● ACTIVE RECORDING SEGMENT:</span>
+                <span class="rec-active-indicator" id="recActiveIndicator">● ACTIVE RECORDING SEGMENT:</span>
                 <span class="rec-filename" id="currentSegmentName">bandit_rec_loading.mp3</span>
               </div>
-              <div class="rec-progress-container">
+              <div class="rec-paused-notice hidden" id="recPausedNotice">
+                <span>⚠️ Auto recording is turned OFF. Host microphone audio is currently not being recorded.</span>
+                <button class="btn btn-sm btn-primary" id="btnResumeRecNotice">▶ Turn ON Auto Record</button>
+              </div>
+              <div class="rec-progress-container" id="recProgressContainer">
                 <div class="rec-progress-bar">
                   <div class="rec-progress-fill" id="recProgressFill" style="width: 0%;"></div>
                 </div>
                 <div class="rec-timer-labels">
                   <span id="recElapsedTime">00:00:00</span>
-                  <span class="rec-limit-hint">Max: 01:00:00 (Rotates hourly)</span>
+                  <span class="rec-limit-hint" id="recLimitHint">Max: 01:00:00 (Rotates hourly)</span>
                 </div>
               </div>
             </div>

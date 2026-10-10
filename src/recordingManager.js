@@ -63,8 +63,16 @@ class RecordingManager extends EventEmitter {
     const timestamp = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const dateStr = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}_${pad(timestamp.getHours())}-${pad(timestamp.getMinutes())}-${pad(timestamp.getSeconds())}`;
-    const filename = `bandit_rec_${dateStr}.${this.format}`;
-    const filePath = path.join(this.recordingsDir, filename);
+    let filename = `bandit_rec_${dateStr}.${this.format}`;
+    let filePath = path.join(this.recordingsDir, filename);
+
+    // Handle collision if toggled multiple times within the same second
+    let counter = 1;
+    while (fs.existsSync(filePath)) {
+      filename = `bandit_rec_${dateStr}_${counter}.${this.format}`;
+      filePath = path.join(this.recordingsDir, filename);
+      counter++;
+    }
 
     this.currentFile = filename;
     this.currentFilePath = filePath;
@@ -76,6 +84,7 @@ class RecordingManager extends EventEmitter {
     const encoderArgs = [
       '-hide_banner',
       '-loglevel', 'error',
+      '-y',
       '-f', 's16le',
       '-ar', String(this.sampleRate),
       '-ac', String(this.channels),
@@ -128,6 +137,8 @@ class RecordingManager extends EventEmitter {
     const finishedFile = this.currentFile;
     const proc = this.currentProcess;
     this.currentProcess = null;
+    this.currentFile = null;
+    this.currentFilePath = null;
 
     try {
       if (proc.stdin && !proc.stdin.destroyed) {
@@ -138,6 +149,7 @@ class RecordingManager extends EventEmitter {
     }
 
     const durationSeconds = this.segmentStartTime ? Math.round((Date.now() - this.segmentStartTime) / 1000) : 0;
+    this.segmentStartTime = null;
     console.log(`[RecordingManager] 💾 Saved recording segment: "${finishedFile}" (Duration: ${durationSeconds}s)`);
 
     this.emit('segment_saved', {
@@ -148,6 +160,44 @@ class RecordingManager extends EventEmitter {
 
     // Run 48-hour purge check after segment finalization
     this.purgeExpiredRecordings();
+  }
+
+  /**
+   * Set recording enabled state explicitly (turn ON or OFF manually).
+   */
+  setEnabled(enabled) {
+    const newState = Boolean(enabled);
+    if (this.enabled === newState) {
+      return this.enabled;
+    }
+
+    this.enabled = newState;
+    console.log(`[RecordingManager] 🔄 Auto-recording manually ${this.enabled ? 'TURNED ON (ACTIVE)' : 'TURNED OFF (PAUSED)'}`);
+
+    if (!this.enabled && this.currentProcess) {
+      // Cleanly finalize active segment so far
+      this.finalizeCurrentSegment();
+    }
+
+    this.emit('status_changed', {
+      enabled: this.enabled,
+      isRecording: this.enabled && Boolean(this.currentProcess),
+      stats: this.listRecordings().stats
+    });
+
+    return this.enabled;
+  }
+
+  enable() {
+    return this.setEnabled(true);
+  }
+
+  disable() {
+    return this.setEnabled(false);
+  }
+
+  toggle() {
+    return this.setEnabled(!this.enabled);
   }
 
   /**
@@ -283,7 +333,7 @@ class RecordingManager extends EventEmitter {
             createdAt: stat.birthtime || stat.mtime,
             modifiedAt: stat.mtime,
             ageHours: parseFloat(ageHours.toFixed(1)),
-            isCurrent: file === this.currentFile,
+            isCurrent: Boolean(this.currentProcess) && file === this.currentFile,
             downloadUrl: `/api/recordings/${encodeURIComponent(file)}`
           });
         } catch {
@@ -305,8 +355,9 @@ class RecordingManager extends EventEmitter {
         totalSizeFormatted: this.formatBytes(totalSizeBytes),
         retentionHours: this.retentionHours,
         segmentDurationSeconds: this.segmentDurationSeconds,
+        enabled: this.enabled,
         isRecording: this.enabled && Boolean(this.currentProcess),
-        currentSegment: this.currentFile ? {
+        currentSegment: (this.enabled && this.currentFile && this.currentProcess) ? {
           filename: this.currentFile,
           elapsedSeconds: this.segmentStartTime ? Math.round((Date.now() - this.segmentStartTime) / 1000) : 0,
           maxSeconds: this.segmentDurationSeconds

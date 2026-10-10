@@ -110,6 +110,10 @@ recordingManager.on('recordings_purged', (data) => {
   broadcastControlMessage({ type: 'recordings_purged', ...data });
 });
 
+recordingManager.on('status_changed', (data) => {
+  broadcastControlMessage({ type: 'recording_status_changed', ...data });
+});
+
 function broadcastControlMessage(data) {
   const json = JSON.stringify(data);
   for (const ws of clients) {
@@ -286,23 +290,25 @@ app.delete('/api/recordings/:filename', authMiddleware, (req, res) => {
   }
 });
 
-// Toggle auto-recording on/off
+// Toggle or manually set auto-recording on/off
 app.post('/api/recordings/toggle', authMiddleware, (req, res) => {
-  const { enabled } = req.body;
+  const { enabled } = req.body || {};
   if (typeof enabled === 'boolean') {
-    recordingManager.enabled = enabled;
+    recordingManager.setEnabled(enabled);
   } else {
-    recordingManager.enabled = !recordingManager.enabled;
+    recordingManager.toggle();
   }
 
-  if (!recordingManager.enabled && recordingManager.currentProcess) {
-    recordingManager.finalizeCurrentSegment();
-  }
+  const list = recordingManager.listRecordings();
+  broadcastControlMessage({
+    type: 'recording_status_changed',
+    stats: list.stats
+  });
 
   res.json({
     success: true,
     enabled: recordingManager.enabled,
-    stats: recordingManager.listRecordings().stats
+    stats: list.stats
   });
 });
 
@@ -424,10 +430,17 @@ function onClientAuthenticated(ws) {
           data: recordingManager.listRecordings()
         }));
       } else if (data.type === 'toggle_recording') {
-        recordingManager.enabled = !recordingManager.enabled;
-        if (!recordingManager.enabled && recordingManager.currentProcess) {
-          recordingManager.finalizeCurrentSegment();
+        if (typeof data.enabled === 'boolean') {
+          recordingManager.setEnabled(data.enabled);
+        } else {
+          recordingManager.toggle();
         }
+        broadcastControlMessage({
+          type: 'recording_status_changed',
+          stats: recordingManager.listRecordings().stats
+        });
+      } else if (data.type === 'set_recording_enabled') {
+        recordingManager.setEnabled(Boolean(data.enabled));
         broadcastControlMessage({
           type: 'recording_status_changed',
           stats: recordingManager.listRecordings().stats
