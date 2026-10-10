@@ -12,6 +12,7 @@ const fs = require('fs');
 const { WebSocketServer, WebSocket } = require('ws');
 const AudioCapture = require('./src/audioCapture');
 const RecordingManager = require('./src/recordingManager');
+const WhisperAnalyzer = require('./src/whisperAnalyzer');
 const { isValidToken, extractToken, authMiddleware } = require('./src/auth');
 const { scanAudioDevices } = require('./src/deviceScanner');
 const { getDspPresetsList } = require('./src/dspFilters');
@@ -50,6 +51,16 @@ const recordingManager = new RecordingManager({
   bitrate: process.env.RECORDING_BITRATE || '64k',
   sampleRate: process.env.SAMPLE_RATE || '24000',
   channels: process.env.CHANNELS || '1'
+});
+
+// Initialize Local Whisper STT & Audio Analysis Engine
+const whisperAnalyzer = new WhisperAnalyzer({
+  whisperBaseUrl: process.env.WHISPER_BASE_URL || 'http://localhost:8000/v1',
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  model: process.env.WHISPER_MODEL || 'small',
+  maxSpeakers: process.env.WHISPER_MAX_SPEAKERS || '4',
+  minSegmentSec: process.env.WHISPER_MIN_SEGMENT_SEC || '0.8',
+  recordingsDir: process.env.RECORDINGS_DIR || path.join(__dirname, 'recordings')
 });
 
 const clients = new Set();
@@ -310,6 +321,157 @@ app.post('/api/recordings/toggle', authMiddleware, (req, res) => {
     enabled: recordingManager.enabled,
     stats: list.stats
   });
+});
+
+// -----------------------------------------------------------------------------
+// Audio Analysis & OpenAI Whisper STT Endpoints
+// -----------------------------------------------------------------------------
+
+// Get Whisper engine status and configuration
+app.get('/api/analysis/config', authMiddleware, async (req, res) => {
+  try {
+    const status = await whisperAnalyzer.checkEngineStatus();
+    res.json({ success: true, ...status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update Whisper configuration (API key or Base URL)
+app.post('/api/analysis/config', authMiddleware, (req, res) => {
+  const { openaiApiKey, whisperBaseUrl, model, maxSpeakers, minSegmentSec } = req.body || {};
+  if (openaiApiKey !== undefined) whisperAnalyzer.openaiApiKey = openaiApiKey;
+  if (whisperBaseUrl !== undefined) whisperAnalyzer.whisperBaseUrl = whisperBaseUrl;
+  if (model !== undefined) whisperAnalyzer.model = model;
+  if (maxSpeakers !== undefined) whisperAnalyzer.maxSpeakers = parseInt(maxSpeakers, 10);
+  if (minSegmentSec !== undefined) whisperAnalyzer.minSegmentSec = parseFloat(minSegmentSec);
+  res.json({ success: true, message: 'Whisper configuration updated' });
+});
+
+// Analyze on-demand last 30 seconds of live microphone stream
+app.post('/api/analysis/live-snapshot', authMiddleware, async (req, res) => {
+  try {
+    const seconds = parseInt(req.body?.seconds || 30, 10);
+    const recentBuffer = audioCapture.getRecentAudioBuffer(seconds);
+    if (!recentBuffer || recentBuffer.length < 1000) {
+      return res.status(400).json({ error: 'No audio captured in rolling buffer yet. Ensure microphone is active.' });
+    }
+
+    const report = await whisperAnalyzer.analyzeAudio(recentBuffer, {
+      filename: `live_mic_last_${seconds}s.mp3`,
+      sampleRate: audioCapture.sampleRate,
+      channels: audioCapture.channels,
+      language: req.body?.language,
+      prompt: req.body?.prompt,
+      keywords: req.body?.keywords,
+      maxSpeakers: req.body?.maxSpeakers || whisperAnalyzer.maxSpeakers,
+      minSegmentSec: req.body?.minSegmentSec || whisperAnalyzer.minSegmentSec
+    });
+
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('[Server] Live snapshot STT error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transcribe an existing 48-Hour Vault recording file
+app.post('/api/analysis/transcribe', authMiddleware, async (req, res) => {
+  try {
+    const { filename, language, prompt, keywords, maxSpeakers, minSegmentSec } = req.body || {};
+    if (!filename) {
+      return res.status(400).json({ error: 'Missing filename parameter' });
+    }
+
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(recordingManager.recordingsDir, safeFilename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Recording file not found in vault' });
+    }
+
+    const report = await whisperAnalyzer.analyzeAudio(filePath, {
+      filename: safeFilename,
+      language,
+      prompt,
+      keywords,
+      maxSpeakers: maxSpeakers || whisperAnalyzer.maxSpeakers,
+      minSegmentSec: minSegmentSec || whisperAnalyzer.minSegmentSec
+    });
+
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error('[Server] Transcribe error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List all past analyzed transcripts
+app.get('/api/analysis/jobs', authMiddleware, (req, res) => {
+  try {
+    const jobs = whisperAnalyzer.listTranscripts();
+    res.json({ success: true, jobs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get a specific transcript by ID / filename
+app.get('/api/analysis/jobs/:id', authMiddleware, (req, res) => {
+  const report = whisperAnalyzer.getTranscript(req.params.id);
+  if (!report) {
+    return res.status(404).json({ error: 'Transcript report not found' });
+  }
+  res.json({ success: true, report });
+});
+
+// Export transcript in SRT, VTT, TXT, or JSON
+app.get('/api/analysis/jobs/:id/export/:format', authMiddleware, (req, res) => {
+  const report = whisperAnalyzer.getTranscript(req.params.id);
+  if (!report) {
+    return res.status(404).json({ error: 'Transcript report not found' });
+  }
+
+  const format = (req.params.format || 'txt').toLowerCase();
+  const safeId = path.parse(report.filename || req.params.id).name;
+
+  if (format === 'srt') {
+    const srt = whisperAnalyzer.exportToSrt(report);
+    res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeId}.srt"`);
+    return res.send(srt);
+  }
+
+  if (format === 'vtt') {
+    const vtt = whisperAnalyzer.exportToVtt(report);
+    res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeId}.vtt"`);
+    return res.send(vtt);
+  }
+
+  if (format === 'txt') {
+    const txt = whisperAnalyzer.exportToTxt(report);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeId}.txt"`);
+    return res.send(txt);
+  }
+
+  if (format === 'json') {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeId}.json"`);
+    return res.json(report);
+  }
+
+  res.status(400).json({ error: 'Unsupported format. Choose srt, vtt, txt, or json.' });
+});
+
+// Delete a transcript from cache
+app.delete('/api/analysis/jobs/:id', authMiddleware, (req, res) => {
+  const deleted = whisperAnalyzer.deleteTranscript(req.params.id);
+  if (deleted) {
+    res.json({ success: true, id: req.params.id });
+  } else {
+    res.status(404).json({ error: 'Transcript report not found' });
+  }
 });
 
 // -----------------------------------------------------------------------------

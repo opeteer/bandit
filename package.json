@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node test/verify_search.js && node test/verify.js && node test/verify_dsp.js && node test/verify_recording.js",
+    "test": "node test/verify_search.js && node test/verify.js && node test/verify_dsp.js && node test/verify_recording.js && node test/verify_analysis.js",
     "list-devices": "node src/deviceScanner.js"
   },
   "keywords": [

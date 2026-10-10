@@ -43,6 +43,11 @@ class AudioCapture extends EventEmitter {
     this.startTime = null;
     this.errorLog = [];
     this.buffer = Buffer.alloc(0);
+
+    // Rolling circular PCM ring buffer for instant STT audio analysis (30s)
+    this.maxRollingBufferSeconds = 30;
+    this.maxRollingBytes = Math.floor(this.sampleRate * this.channels * this.bytesPerSample * this.maxRollingBufferSeconds);
+    this.recentAudioBuffer = Buffer.alloc(0);
   }
 
   /**
@@ -193,6 +198,12 @@ class AudioCapture extends EventEmitter {
     this.process.stdout.on('data', (data) => {
       this.totalBytesCaptured += data.length;
       this.buffer = Buffer.concat([this.buffer, data]);
+
+      // Maintain rolling circular ring buffer of last 30 seconds
+      this.recentAudioBuffer = Buffer.concat([this.recentAudioBuffer, data]);
+      if (this.recentAudioBuffer.length > this.maxRollingBytes) {
+        this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
+      }
 
       while (this.buffer.length >= this.chunkSizeBytes) {
         const chunk = this.buffer.subarray(0, this.chunkSizeBytes);
@@ -414,9 +425,24 @@ class AudioCapture extends EventEmitter {
   }
 
   /**
+   * Retrieve a snapshot of the rolling PCM audio buffer for the last N seconds (default 30s).
+   * @param {number} seconds
+   * @returns {Buffer} Raw PCM s16le audio buffer
+   */
+  getRecentAudioBuffer(seconds = 30) {
+    const sec = Math.max(1, Math.min(seconds, this.maxRollingBufferSeconds));
+    const reqBytes = Math.floor(this.sampleRate * this.channels * this.bytesPerSample * sec);
+    if (this.recentAudioBuffer.length <= reqBytes) {
+      return Buffer.from(this.recentAudioBuffer);
+    }
+    return Buffer.from(this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - reqBytes));
+  }
+
+  /**
    * Diagnostic state object.
    */
   getStatus() {
+    const bufferedSecs = (this.recentAudioBuffer.length / (this.sampleRate * this.channels * this.bytesPerSample));
     return {
       isRunning: this.isRunning,
       device: this.currentDevice || this.device,
@@ -435,6 +461,8 @@ class AudioCapture extends EventEmitter {
       searchIntervalMs: this.searchIntervalMs,
       uptimeSeconds: this.startTime && this.isRunning ? Math.floor((Date.now() - this.startTime) / 1000) : 0,
       totalBytesCaptured: this.totalBytesCaptured,
+      hasRecentBuffer: this.recentAudioBuffer.length > 0,
+      recentBufferSeconds: Math.round(bufferedSecs * 10) / 10,
       recentErrors: this.errorLog
     };
   }

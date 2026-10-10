@@ -26,3 +26,35 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    depends_on:
+      bandit-whisper:
+        condition: service_started
+
+  bandit-whisper:
+    build:
+      context: ./services/whisper
+      dockerfile: Dockerfile
+    image: bandit-whisper:latest
+    container_name: bandit-whisper
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=small
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=int8
+      - WHISPER_MAX_SPEAKERS=4
+      - WHISPER_MIN_SEGMENT_SEC=0.8
+    volumes:
+      - whisper-models:/root/.cache/whisper
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  whisper-models:
+

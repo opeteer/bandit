@@ -37,22 +37,42 @@
       </div>
     </header>
 
+    <!-- Top Navigation Menu Bar -->
+    <nav class="app-nav">
+      <button class="nav-tab active" data-tab="live" id="navTabLive">
+        <span class="nav-icon">🎙️</span>
+        <span class="nav-text">LIVE SURVEILLANCE</span>
+      </button>
+      <button class="nav-tab" data-tab="vault" id="navTabVault">
+        <span class="nav-icon">📼</span>
+        <span class="nav-text">RECORDING VAULT</span>
+      </button>
+      <button class="nav-tab" data-tab="analysis" id="navTabAnalysis">
+        <span class="nav-icon">🧠</span>
+        <span class="nav-text">AUDIO ANALYSIS</span>
+        <span class="badge badge-accent">NEW</span>
+      </button>
+    </nav>
+
     <!-- Main Content -->
     <main class="main-content">
-      <!-- Visualizer & VU Meter Section -->
-      <section class="visualizer-card">
-        <div class="card-header">
-          <div class="section-title">
-            <span class="indicator-led" id="audioActivityLed"></span>
-            <h2>LIVE FREQUENCY & WAVEFORM MONITOR</h2>
-          </div>
-          <div class="visualizer-controls">
-            <div class="mode-toggle">
-              <button class="mode-btn active" data-mode="waveform" id="btnModeWaveform">Oscilloscope</button>
-              <button class="mode-btn" data-mode="spectrum" id="btnModeSpectrum">Spectrum</button>
+      <!-- Tab 1: Live Surveillance View -->
+      <div class="tab-view active" id="viewLive">
+        <!-- Visualizer & VU Meter Section -->
+        <section class="visualizer-card">
+          <div class="card-header">
+            <div class="section-title">
+              <span class="indicator-led" id="audioActivityLed"></span>
+              <h2>LIVE FREQUENCY & WAVEFORM MONITOR</h2>
+            </div>
+            <div class="visualizer-controls">
+              <button class="btn btn-sm btn-accent" id="btnQuick30sLive" title="Analyze last 30 seconds of live mic using Whisper">⚡ Analyze Last 30s Mic</button>
+              <div class="mode-toggle">
+                <button class="mode-btn active" data-mode="waveform" id="btnModeWaveform">Oscilloscope</button>
+                <button class="mode-btn" data-mode="spectrum" id="btnModeSpectrum">Spectrum</button>
+              </div>
             </div>
           </div>
-        </div>
 
         <div class="canvas-wrapper">
           <canvas id="visualizerCanvas" width="960" height="260"></canvas>
@@ -264,10 +284,14 @@
           </div>
         </div>
       </section>
+      </div>
+      <!-- End of Tab 1: Live Surveillance View -->
 
-      <!-- 48-Hour Automatic Recording Vault Section -->
-      <section class="card recordings-card" id="recordingsCard">
-        <div class="card-header">
+      <!-- Tab 2: 48-Hour Automatic Recording Vault View -->
+      <div class="tab-view" id="viewVault">
+        <!-- 48-Hour Automatic Recording Vault Section -->
+        <section class="card recordings-card" id="recordingsCard">
+          <div class="card-header">
           <div class="section-title">
             <span class="rec-icon">📼</span>
             <h2>48-HOUR AUTOMATIC RECORDING VAULT</h2>
@@ -355,6 +379,198 @@
           </div>
         </div>
       </section>
+      </div>
+      <!-- End of Tab 2: 48-Hour Automatic Recording Vault View -->
+
+      <!-- Tab 3: Audio Analysis & Whisper STT View -->
+      <div class="tab-view" id="viewAnalysis">
+        <section class="card analysis-card" id="analysisCard">
+          <div class="card-header">
+            <div class="section-title">
+              <span class="analysis-icon">🧠</span>
+              <h2>OPENAI WHISPER AUDIO INTELLIGENCE & STT</h2>
+            </div>
+            <div class="analysis-header-actions">
+              <span class="badge badge-whisper" id="whisperEngineBadge">● LOCAL WHISPER (SMALL)</span>
+              <span class="badge badge-info" id="whisperModelBadge">int8 CPU // 4-Spk Diarization</span>
+              <button class="btn btn-sm btn-outline" id="btnConfigWhisper">⚙️ Settings</button>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Source Selector & Instant 30s Live Trigger -->
+            <div class="analysis-deck">
+              <div class="source-action-card highlight-card">
+                <div class="action-card-header">
+                  <span class="action-badge">INSTANT STREAM SNAPSHOT</span>
+                  <h3>Analyze Last 30 Seconds Live Mic</h3>
+                </div>
+                <p class="action-card-desc">
+                  Captures the rolling circular PCM buffer directly from host PC mic, performs local Whisper transcription, word-level timestamps, and auto-detects up to 4 speakers with 0.8s threshold.
+                </p>
+                <div class="action-card-controls">
+                  <button class="btn btn-primary btn-large btn-glow" id="btnAnalyzeLive30s">
+                    <span class="lightning-icon">⚡</span>
+                    ANALYZE LAST 30S LIVE MIC
+                  </button>
+                  <span class="buffer-info-text" id="bufferInfoText">Rolling Buffer: Ready</span>
+                </div>
+              </div>
+
+              <div class="source-action-card">
+                <div class="action-card-header">
+                  <span class="action-badge">48-HOUR VAULT RECORDINGS</span>
+                  <h3>Analyze Saved Recording Segment</h3>
+                </div>
+                <p class="action-card-desc">
+                  Select any hourly audio segment from the 48-Hour Vault. Files are automatically optimized with FFmpeg before Whisper processing.
+                </p>
+                <div class="vault-select-row">
+                  <select id="analysisVaultSelect" class="form-select">
+                    <option value="">Select a vault recording file...</option>
+                  </select>
+                  <button class="btn btn-secondary" id="btnAnalyzeVaultFile">Analyze File</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Parameters & Keyword Watchlist -->
+            <div class="analysis-params-strip">
+              <div class="param-item">
+                <label for="analysisLanguageSelect">Spoken Language:</label>
+                <select id="analysisLanguageSelect" class="form-select form-select-sm">
+                  <option value="auto">Auto-Detect Language</option>
+                  <option value="en">English (en)</option>
+                  <option value="id">Indonesian (id)</option>
+                  <option value="es">Spanish (es)</option>
+                  <option value="fr">French (fr)</option>
+                  <option value="de">German (de)</option>
+                  <option value="it">Italian (it)</option>
+                  <option value="ja">Japanese (ja)</option>
+                  <option value="zh">Chinese (zh)</option>
+                  <option value="ru">Russian (ru)</option>
+                  <option value="ar">Arabic (ar)</option>
+                </select>
+              </div>
+
+              <div class="param-item flex-grow">
+                <label for="analysisKeywordsInput">Keyword Alert Watchlist (comma separated):</label>
+                <input type="text" id="analysisKeywordsInput" class="form-input form-input-sm" value="help, security, intruder, password, alert, danger, police" placeholder="e.g. help, intruder, password, alert">
+              </div>
+
+              <div class="param-item">
+                <label for="analysisMaxSpeakers">Max Speakers:</label>
+                <select id="analysisMaxSpeakers" class="form-select form-select-sm">
+                  <option value="4" selected>Up to 4 Speakers</option>
+                  <option value="3">Up to 3 Speakers</option>
+                  <option value="2">2 Speakers (Dialogue)</option>
+                  <option value="1">1 Speaker (Solo)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Analysis Progress Spinner & Status Banner -->
+            <div class="analysis-progress-banner hidden" id="analysisProgressBanner">
+              <div class="spinner-ring"></div>
+              <div class="progress-details">
+                <h4 id="analysisProgressTitle">Transcribing Audio with Whisper...</h4>
+                <p id="analysisProgressSubtext">Running faster-whisper CTranslate2 int8 inference, extracting word timestamps, and clustering up to 4 speakers...</p>
+              </div>
+            </div>
+
+            <!-- Analysis Results Workspace -->
+            <div class="analysis-results-workspace hidden" id="analysisResultsWorkspace">
+              <!-- Summary Telemetry Cards -->
+              <div class="analysis-metrics-grid">
+                <div class="metric-card">
+                  <span class="metric-label">DETECTED LANGUAGE</span>
+                  <span class="metric-value highlight" id="resLanguage">English</span>
+                  <span class="metric-sub" id="resLangProb">99% confidence</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-label">SPEECH ACTIVITY RATIO</span>
+                  <span class="metric-value" id="resSpeechRatio">0%</span>
+                  <span class="metric-sub" id="resSpeechDur">0s speech / 0s silence</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-label">TOTAL WORDS & RATE</span>
+                  <span class="metric-value" id="resWordCount">0 words</span>
+                  <span class="metric-sub" id="resWpm">0 WPM</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-label">SPEAKERS DETECTED</span>
+                  <span class="metric-value highlight" id="resSpeakerCount">0</span>
+                  <span class="metric-sub" id="resSpeakerThreshold">≥ 0.8s threshold</span>
+                </div>
+                <div class="metric-card alert-metric">
+                  <span class="metric-label">KEYWORD ALERTS</span>
+                  <span class="metric-value alert-val" id="resKeywordCount">0</span>
+                  <span class="metric-sub" id="resKeywordHits">0 watchlist hits</span>
+                </div>
+              </div>
+
+              <!-- Speaker Diarization Breakdown Strip -->
+              <div class="diarization-strip" id="diarizationStrip">
+                <div class="diarization-header">
+                  <h4>SPEAKER DIARIZATION BREAKDOWN</h4>
+                  <div class="speaker-filter-toggles" id="speakerFilterToggles">
+                    <button class="speaker-filter-btn active" data-speaker="all">All Speakers</button>
+                  </div>
+                </div>
+                <div class="speaker-distribution-bar" id="speakerDistributionBar">
+                  <!-- Filled dynamically with color segments -->
+                </div>
+                <div class="speaker-legend-strip" id="speakerLegendStrip">
+                  <!-- Speaker pills filled dynamically -->
+                </div>
+              </div>
+
+              <!-- Synchronized Audio Player Box -->
+              <div class="analysis-player-box" id="analysisPlayerBox">
+                <div class="player-headline">
+                  <span class="player-badge">SYNCHRONIZED AUDIO PLAYBACK:</span>
+                  <span class="active-item-name" id="analysisActiveItemName">live_mic_snapshot.mp3</span>
+                </div>
+                <audio id="analysisAudioPlayer" controls preload="metadata" class="analysis-audio-element"></audio>
+                <div class="player-sync-hints">
+                  <span>💡 Click any word or segment timestamp below to jump audio playback directly to that moment.</span>
+                </div>
+              </div>
+
+              <!-- Interactive Searchable Transcript -->
+              <div class="transcript-section">
+                <div class="transcript-header">
+                  <div class="transcript-title-group">
+                    <h3>INTERACTIVE TRANSCRIPT (WORD-LEVEL TIMESTAMPS)</h3>
+                    <span class="badge badge-info" id="transcriptItemBadge">0 Segments</span>
+                  </div>
+                  <div class="transcript-search-group">
+                    <input type="text" id="transcriptSearchInput" class="form-input form-input-sm" placeholder="🔍 Search spoken words or keywords...">
+                    <button class="btn btn-sm btn-outline" id="btnClearTranscriptSearch">Clear</button>
+                  </div>
+                </div>
+
+                <div class="transcript-body" id="transcriptBody">
+                  <!-- Rendered dynamically with word spans and speaker badges -->
+                </div>
+
+                <!-- Export Toolbar -->
+                <div class="transcript-export-toolbar">
+                  <div class="export-actions">
+                    <span class="export-label">EXPORT INTEL:</span>
+                    <button class="btn btn-sm btn-secondary" id="btnCopyTranscript">📋 Copy Text</button>
+                    <button class="btn btn-sm btn-secondary" id="btnExportSrt">🎬 Subtitles (.SRT)</button>
+                    <button class="btn btn-sm btn-secondary" id="btnExportVtt">🌐 WebVTT (.VTT)</button>
+                    <button class="btn btn-sm btn-secondary" id="btnExportTxt">📄 Plain Text (.TXT)</button>
+                    <button class="btn btn-sm btn-secondary" id="btnExportJson">📦 Raw Data (.JSON)</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <!-- End of Tab 3: Audio Analysis & Whisper STT View -->
     </main>
 
     <!-- Footer -->
@@ -382,6 +598,43 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="btnCancelModal">Cancel</button>
         <button class="btn btn-primary" id="btnSaveToken">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Whisper Settings Modal -->
+  <div class="modal-backdrop" id="whisperModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>WHISPER STT CONFIGURATION</h3>
+        <button class="modal-close" id="btnCloseWhisperModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Configure local Whisper container endpoint or optional cloud OpenAI API fallback.</p>
+        <div class="form-group">
+          <label for="cfgWhisperBaseUrl">Local Whisper Base URL:</label>
+          <input type="text" id="cfgWhisperBaseUrl" class="form-input" placeholder="http://localhost:8000/v1">
+          <small class="control-hint">Default local Docker service is http://localhost:8000/v1 (or http://bandit-whisper:8000/v1)</small>
+        </div>
+        <div class="form-group">
+          <label for="cfgOpenAiKey">OpenAI Cloud API Key (Optional):</label>
+          <input type="password" id="cfgOpenAiKey" class="form-input" placeholder="sk-..." autocomplete="off">
+          <small class="control-hint">Used as backup if local Whisper container is offline</small>
+        </div>
+        <div class="form-group">
+          <label for="cfgMaxSpeakers">Max Speakers (Diarization):</label>
+          <input type="number" id="cfgMaxSpeakers" class="form-input" min="1" max="4" value="4">
+        </div>
+        <div class="form-group">
+          <label for="cfgMinSegmentSec">Min Segment Duration Threshold (Seconds):</label>
+          <input type="number" id="cfgMinSegmentSec" class="form-input" min="0.2" max="3.0" step="0.1" value="0.8">
+          <small class="control-hint">Enforces 0.8s threshold to avoid false speaker splits on brief clicks</small>
+        </div>
+        <div id="whisperConfigMessage" class="auth-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelWhisperModal">Cancel</button>
+        <button class="btn btn-primary" id="btnSaveWhisperConfig">Save Settings</button>
       </div>
     </div>
   </div>

@@ -4,4 +4,6 @@ node_modules/
 .DS_Store
 recordings/*.mp3
 recordings/*.wav
+recordings/transcripts/*.json
+
 

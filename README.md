@@ -10,12 +10,15 @@
 - **Cross-Platform Microphone Ingestion & Auto-Discovery**: Piped FFmpeg capture supporting **Linux** (ALSA / PulseAudio / PipeWire), **Windows** (DirectShow), and **macOS** (AVFoundation). **Continuously polls the host in the background if no microphone is found** and seamlessly auto-connects to newly plugged-in physical devices on the fly without restarting!
 - **EasyEffects DSP Sound Rack**: Real-time input sound processing modeled after Linux EasyEffects technology: Neural Noise Suppression, Downward Noise Gate, Vocal Presence Parametric EQ, Broadcast Dynamic Compressor, De-Esser, Speech Normalization, and Lookahead Peak Limiter.
 - **Surveillance Presets**: Instant 1-click sound profiles: **Whisper & Covert Surveillance** (high sensitivity AGC), **Clean Voice & Broadcast**, **Extreme Noise Rejection**, and **Raw Bypass**.
+- **OpenAI Whisper Speech-to-Text & Diarization**: Full-featured local speech recognition container (`bandit-whisper`) powered by `faster-whisper` (`small` model with `int8` CPU quantization). Automatically clusters and identifies **up to 4 speakers** with an enforced **minimum segment threshold of 0.8s** to eliminate false micro-chatter speaker flipping.
+- **Word-Level Timestamps & Synchronized Player**: Millisecond-accurate word alignment with real-time interactive karaoke word glow during playback and 1-click seek-to-word navigation.
+- **Quick 30-Second Live Mic Analysis**: In-memory circular rolling PCM ring buffer retains the latest 30 seconds of live microphone audio, transcribing immediate conversations at the touch of a button.
+- **Autonomous 48-Hour Rolling Recording Vault**: 24/7 background audio recording into standardized 1-hour segments with automatic rolling 48-hour retention pruning and HTTP 206 Partial Content in-browser scrubbing.
 - **Microphone Amplification**: Built-in 1.0x – 5.0x Gain Boost slider to amplify faint room whispers and distant ambient audio.
 - **Live Canvas Visualizer & VU Meter**: Dual-mode 60fps real-time visualizer (Oscilloscope Waveform & Frequency Spectrum Bars) powered by `AnalyserNode`, along with an active dB VU meter and sound-detection LED indicator.
 - **Access Security**: Constant-time timing-safe token authentication protecting REST endpoints and WebSocket handshakes—ideal for zero-trust exposure via Cloudflare Tunnel, Tailscale, or ngrok.
-- **Real-Time Telemetry**: Live round-trip latency counter, stream buffer health (ms), data throughput (KB/s), total payload received, and active listener count.
-- **Docker Compose Ready**: One-command containerized deployment with direct `/dev/snd` host microphone passthrough.
-- **Zero Heavy Frontend Frameworks**: Built entirely with modern vanilla HTML5, CSS3, and JavaScript.
+- **Multi-Format Subtitle Exporters**: Export analysis reports directly into `.srt`, `.vtt`, `.txt`, and `.json`.
+- **Docker Compose Ready**: One-command containerized deployment running both the `bandit` host streaming application and `bandit-whisper` local speech recognition engine.
 
 ---
 
@@ -24,26 +27,37 @@
 ```text
 bandit/
 ├── .dockerignore              # Container build ignore rules
-├── .env.example               # Template environment configuration
+├── .env.example               # Template environment configuration (Whisper & Vault settings)
 ├── .gitignore                 # Git ignore rules
 ├── Dockerfile                 # Debian-slim Node.js + FFmpeg container image
-├── docker-compose.yml         # Container compose definition with host ALSA passthrough
-├── package.json               # Node.js dependencies and run scripts
+├── docker-compose.yml         # Compose definition for bandit + bandit-whisper services
+├── package.json               # Node.js dependencies and 5-suite test scripts
 ├── README.md                  # Comprehensive setup and operations manual
 ├── server.js                  # Main Express + WebSocket server & stream coordinator
+├── recordings/                # Rolling 48-hour audio segments vault
+│   └── transcripts/           # Saved speech intelligence reports & word transcripts
+├── services/
+│   └── whisper/               # Dedicated local OpenAI Whisper microservice
+│       ├── Dockerfile         # Python 3.11-slim + FFmpeg + faster-whisper container
+│       ├── requirements.txt   # FastAPI, uvicorn, faster-whisper, numpy, soundfile, scipy
+│       └── app.py             # OpenAI-compatible /v1/audio/transcriptions & 4-speaker diarizer
 ├── src/
-│   ├── audioCapture.js        # FFmpeg process supervisor with auto-restart & fallback
+│   ├── audioCapture.js        # FFmpeg supervisor with 30s circular PCM ring buffer & DSP rack
 │   ├── auth.js                # Timing-safe token authentication & middleware
 │   ├── deviceScanner.js       # Cross-platform audio device enumeration CLI & API
-│   └── dspFilters.js          # EasyEffects-inspired real-time DSP sound rack & filter chains
+│   ├── dspFilters.js          # EasyEffects-inspired real-time DSP sound rack & filter chains
+│   ├── recordingManager.js    # 48-hour recording engine, 1h segment rotation & rolling purge
+│   └── whisperAnalyzer.js     # Whisper client, FFmpeg downsampler, speech metrics & exporters
 ├── test/
-│   ├── verify.js              # Full system and WebSocket test suite
+│   ├── verify.js              # Core server, auth, and WebSocket test suite
 │   ├── verify_search.js       # Continuous mic search & auto-connect test
-│   └── verify_dsp.js          # EasyEffects DSP filter chain & live stream test
+│   ├── verify_dsp.js          # EasyEffects DSP filter chain & live stream test
+│   ├── verify_recording.js    # 48-hour recording lifecycle, rotation, purge & HTTP 206 test
+│   └── verify_analysis.js     # Whisper STT, 30s ring buffer, 4-speaker diarizer & subtitle test
 └── public/
-    ├── index.html             # Surveillance dashboard layout & UI controls
-    ├── style.css              # Cyber-tactical responsive dark theme
-    └── app.js                 # Web Audio API engine, drift buffer, & canvas visualizer
+    ├── index.html             # 3-Tab UI: Live Surveillance, Recording Vault, & Audio Analysis
+    ├── style.css              # Cyber-tactical responsive dark theme & karaoke word glow
+    └── app.js                 # Web Audio API engine, sync word-player, 30s live snapshot & UI
 ```
 
 ---
@@ -253,6 +267,41 @@ Bandit features an autonomous 24/7 rolling surveillance recording system:
 
 ---
 
+## 🧠 OpenAI Whisper Speech-to-Text & Audio Analysis
+
+Bandit includes a dedicated speech intelligence subsystem powered by OpenAI Whisper:
+
+- **Local Dockerized Inference Engine (`services/whisper/`)**:
+  - Runs in a lightweight container (`bandit-whisper`) using `faster-whisper` (CTranslate2).
+  - Uses the **`small` model with `int8` CPU quantization** (or FP16 on GPU), keeping memory usage under ~1.2 GB and delivering 4x faster-than-realtime transcription.
+  - Automatically loads on container startup and caches weights in the `whisper-models` persistent Docker volume.
+- **Auto-Detect Up to 4 Speakers with 0.8s Minimum Segment Threshold**:
+  - Performs acoustic clustering (spectral centroid, zero-crossing rate, fundamental pitch) across detected utterances to label distinct speakers (up to 4 speakers).
+  - Enforces a minimum segment duration threshold of **0.8 seconds** (`WHISPER_MIN_SEGMENT_SEC=0.8`). Short acoustic clicks or transient syllables are merged into surrounding speaker turns, eliminating erratic speaker switching.
+- **Word-Level Timestamps & Synchronized Interactive Player**:
+  - Generates millisecond-accurate start and end timestamps for every word.
+  - **Karaoke Word Glow**: During playback of analyzed clips, the active word glows in amber real-time as speech progresses.
+  - **Click-to-Seek**: Clicking any word in the transcript seeks audio playback directly to that word.
+- **Quick "Analyze Last 30 Seconds of Live Mic" Feature**:
+  - Live microphone audio is continuously buffered in an in-memory 24kHz PCM circular ring buffer.
+  - Clicking **⚡ Analyze Last 30s Mic** instantly cuts the preceding 30 seconds, downsamples to 16kHz MP3 via FFmpeg, and transcribes/diarizes the live interaction without affecting continuous background recording.
+- **Multi-Format Subtitle & Intelligence Exports**:
+  - **SRT** (`.srt`): SubRip subtitle format with sequence indexing and timestamps.
+  - **VTT** (`.vtt`): WebVTT format for web captions.
+  - **TXT** (`.txt`): Human-readable transcript annotated with speaker labels.
+  - **JSON** (`.json`): Complete raw transcript schema with word objects, confidence scores, and speech metrics.
+
+### Audio Analysis REST API Endpoints
+- `POST /api/analysis/live-snapshot`: Capture and transcribe the last 30 seconds of live microphone audio.
+- `POST /api/analysis/transcribe`: Transcribe any audio recording file or uploaded clip (`{ "filename": "..." }`).
+- `GET /api/analysis/jobs`: List all completed and active transcription jobs.
+- `GET /api/analysis/jobs/:id/export/:format`: Download subtitle/transcript in `srt`, `vtt`, `txt`, or `json` format.
+- `DELETE /api/analysis/jobs/:id`: Delete an analysis job and its associated transcript file.
+- `GET /api/analysis/config`: Retrieve current Whisper engine configuration and model status.
+- `POST /api/analysis/config`: Dynamically update Whisper parameters (model size, speaker limits, thresholds).
+
+---
+
 ## ⚙️ Configuration Reference (`.env`)
 
 | Variable | Default | Description |
@@ -275,6 +324,11 @@ Bandit features an autonomous 24/7 rolling surveillance recording system:
 | `RECORDINGS_DIR` | `./recordings` | Directory path where recording segments are stored. |
 | `RECORDING_FORMAT` | `mp3` | Encoding format (`mp3` or `wav`). |
 | `RECORDING_BITRATE` | `64k` | MP3 bitrate (default: `64k` mono voice). |
+| `WHISPER_BASE_URL` | `http://localhost:8000/v1` | URL for the local Whisper container (`http://bandit-whisper:8000/v1` in Docker Compose). |
+| `WHISPER_MODEL` | `small` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large-v3`). |
+| `WHISPER_MAX_SPEAKERS` | `4` | Maximum distinct speakers to cluster in diarization (default: `4`). |
+| `WHISPER_MIN_SEGMENT_SEC` | `0.8` | Minimum segment duration threshold in seconds to smooth short transients (default: `0.8`). |
+| `OPENAI_API_KEY` | `""` | Optional OpenAI API key if using cloud Whisper API fallback. |
 
 ---
 
@@ -313,13 +367,36 @@ When accessing Bandit remotely over the internet, keep `AUTH_TOKEN` enabled and 
 
 ## 🛠️ Verification & Troubleshooting
 
-### Test the API
+### Running Automated Test Suites
+Run the full 5-part verification test battery:
+```bash
+npm test
+```
+Or run individual test modules:
+```bash
+node test/verify_search.js      # Continuous mic search & auto-connect
+node test/verify.js             # Core auth and WebSocket streaming (port 8099)
+node test/verify_dsp.js         # EasyEffects DSP filter graph (port 8082)
+node test/verify_recording.js   # 48-hour recording vault & HTTP 206 (port 8190)
+node test/verify_analysis.js    # Whisper STT & 4-speaker diarization (port 8083)
+```
+
+### Test the REST API
 ```bash
 # Check system status
 curl -s http://localhost:8099/api/status | jq .
 
 # Check devices (with token)
 curl -s "http://localhost:8099/api/devices?token=your-token" | jq .
+
+# Check Whisper container health
+curl -s http://localhost:8000/health | jq .
+
+# Query Whisper config & model size
+curl -s "http://localhost:8099/api/analysis/config?token=your-token" | jq .
+
+# Trigger 30s live mic snapshot analysis
+curl -X POST "http://localhost:8099/api/analysis/live-snapshot?token=your-token" | jq .
 ```
 
 ### Browser Autoplay Notice

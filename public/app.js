@@ -135,6 +135,76 @@
   const vaultPlayerTitle = document.getElementById('vaultPlayerTitle');
   const recordingsTableBody = document.getElementById('recordingsTableBody');
 
+  // Top Navigation & Tab Elements
+  const navTabs = document.querySelectorAll('.nav-tab');
+  const viewLive = document.getElementById('viewLive');
+  const viewVault = document.getElementById('viewVault');
+  const viewAnalysis = document.getElementById('viewAnalysis');
+  const btnQuick30sLive = document.getElementById('btnQuick30sLive');
+
+  // Audio Analysis Elements
+  const whisperEngineBadge = document.getElementById('whisperEngineBadge');
+  const whisperModelBadge = document.getElementById('whisperModelBadge');
+  const btnConfigWhisper = document.getElementById('btnConfigWhisper');
+  const btnAnalyzeLive30s = document.getElementById('btnAnalyzeLive30s');
+  const bufferInfoText = document.getElementById('bufferInfoText');
+  const analysisVaultSelect = document.getElementById('analysisVaultSelect');
+  const btnAnalyzeVaultFile = document.getElementById('btnAnalyzeVaultFile');
+  const analysisLanguageSelect = document.getElementById('analysisLanguageSelect');
+  const analysisKeywordsInput = document.getElementById('analysisKeywordsInput');
+  const analysisMaxSpeakers = document.getElementById('analysisMaxSpeakers');
+  const analysisProgressBanner = document.getElementById('analysisProgressBanner');
+  const analysisProgressTitle = document.getElementById('analysisProgressTitle');
+  const analysisProgressSubtext = document.getElementById('analysisProgressSubtext');
+  const analysisResultsWorkspace = document.getElementById('analysisResultsWorkspace');
+
+  // Results Telemetry Elements
+  const resLanguage = document.getElementById('resLanguage');
+  const resLangProb = document.getElementById('resLangProb');
+  const resSpeechRatio = document.getElementById('resSpeechRatio');
+  const resSpeechDur = document.getElementById('resSpeechDur');
+  const resWordCount = document.getElementById('resWordCount');
+  const resWpm = document.getElementById('resWpm');
+  const resSpeakerCount = document.getElementById('resSpeakerCount');
+  const resKeywordCount = document.getElementById('resKeywordCount');
+  const resKeywordHits = document.getElementById('resKeywordHits');
+
+  // Diarization Strip Elements
+  const speakerDistributionBar = document.getElementById('speakerDistributionBar');
+  const speakerLegendStrip = document.getElementById('speakerLegendStrip');
+  const speakerFilterToggles = document.getElementById('speakerFilterToggles');
+
+  // Synchronized Audio Player Elements
+  const analysisAudioPlayer = document.getElementById('analysisAudioPlayer');
+  const analysisActiveItemName = document.getElementById('analysisActiveItemName');
+
+  // Interactive Transcript Elements
+  const transcriptItemBadge = document.getElementById('transcriptItemBadge');
+  const transcriptSearchInput = document.getElementById('transcriptSearchInput');
+  const btnClearTranscriptSearch = document.getElementById('btnClearTranscriptSearch');
+  const transcriptBody = document.getElementById('transcriptBody');
+
+  // Export Toolbar Elements
+  const btnCopyTranscript = document.getElementById('btnCopyTranscript');
+  const btnExportSrt = document.getElementById('btnExportSrt');
+  const btnExportVtt = document.getElementById('btnExportVtt');
+  const btnExportTxt = document.getElementById('btnExportTxt');
+  const btnExportJson = document.getElementById('btnExportJson');
+
+  // Whisper Settings Modal Elements
+  const whisperModal = document.getElementById('whisperModal');
+  const btnCloseWhisperModal = document.getElementById('btnCloseWhisperModal');
+  const btnCancelWhisperModal = document.getElementById('btnCancelWhisperModal');
+  const btnSaveWhisperConfig = document.getElementById('btnSaveWhisperConfig');
+  const cfgWhisperBaseUrl = document.getElementById('cfgWhisperBaseUrl');
+  const cfgOpenAiKey = document.getElementById('cfgOpenAiKey');
+  const cfgMaxSpeakers = document.getElementById('cfgMaxSpeakers');
+  const cfgMinSegmentSec = document.getElementById('cfgMinSegmentSec');
+  const whisperConfigMessage = document.getElementById('whisperConfigMessage');
+
+  let currentAnalysisReport = null;
+  let activeSpeakerFilter = 'all';
+
   let activeSegmentState = null;
   let isRecordingActive = true;
 
@@ -1120,6 +1190,7 @@
           <td style="text-align: right;">
             <div class="rec-actions">
               <button class="btn-rec btn-play-rec" data-file="${escapeHtml(rec.filename)}">▶ Play</button>
+              <button class="btn-rec btn-analyze-rec" data-file="${escapeHtml(rec.filename)}">🧠 Analyze</button>
               <a class="btn-rec" href="${downloadUrl}" download="${escapeHtml(rec.filename)}">⬇ Save</a>
               ${!isCurrent ? `<button class="btn-rec btn-del-rec" data-file="${escapeHtml(rec.filename)}">🗑 Del</button>` : ''}
             </div>
@@ -1130,11 +1201,32 @@
 
     recordingsTableBody.innerHTML = rowsHtml;
 
+    // Populate analysis vault selector dropdown
+    if (analysisVaultSelect) {
+      const currentVal = analysisVaultSelect.value;
+      let opts = '<option value="">Select a vault recording file...</option>';
+      for (const rec of recordings) {
+        opts += `<option value="${escapeHtml(rec.filename)}" ${rec.filename === currentVal ? 'selected' : ''}>${escapeHtml(rec.filename)} (${rec.sizeFormatted || ''})</option>`;
+      }
+      analysisVaultSelect.innerHTML = opts;
+    }
+
     // Attach row button events
     recordingsTableBody.querySelectorAll('.btn-play-rec').forEach(btn => {
       btn.addEventListener('click', () => {
         const file = btn.getAttribute('data-file');
         if (file) playRecording(file);
+      });
+    });
+
+    recordingsTableBody.querySelectorAll('.btn-analyze-rec').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const file = btn.getAttribute('data-file');
+        if (file) {
+          switchTab('analysis');
+          if (analysisVaultSelect) analysisVaultSelect.value = file;
+          triggerVaultAnalysis(file);
+        }
       });
     });
 
@@ -1216,6 +1308,499 @@
 
   if (btnResumeRecNotice) {
     btnResumeRecNotice.addEventListener('click', () => toggleRecording(true));
+  }
+
+  // ===========================================================================
+  // Top Navigation & Tab Switching
+  // ===========================================================================
+
+  const tabViewsMap = {
+    live: viewLive,
+    vault: viewVault,
+    analysis: viewAnalysis
+  };
+
+  function switchTab(tabId) {
+    navTabs.forEach(tab => {
+      if (tab.getAttribute('data-tab') === tabId) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+
+    Object.keys(tabViewsMap).forEach(key => {
+      const view = tabViewsMap[key];
+      if (view) {
+        if (key === tabId) {
+          view.classList.add('active');
+        } else {
+          view.classList.remove('active');
+        }
+      }
+    });
+
+    if (tabId === 'analysis') {
+      loadAnalysisConfig();
+    }
+  }
+
+  navTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.getAttribute('data-tab');
+      if (target) switchTab(target);
+    });
+  });
+
+  if (btnQuick30sLive) {
+    btnQuick30sLive.addEventListener('click', () => {
+      switchTab('analysis');
+      triggerLiveSnapshotAnalysis(30);
+    });
+  }
+
+  // ===========================================================================
+  // Audio Analysis & OpenAI Whisper STT Controller
+  // ===========================================================================
+
+  function formatTime(seconds) {
+    const s = Math.max(0, Math.floor(seconds || 0));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  async function loadAnalysisConfig() {
+    const token = getStoredToken();
+    try {
+      const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateEngineBadges(data);
+      }
+    } catch (e) {
+      console.warn('[Analysis] Config check warning:', e);
+    }
+  }
+
+  function updateEngineBadges(cfg) {
+    if (!whisperEngineBadge) return;
+    if (cfg.activeEngine === 'local_whisper') {
+      whisperEngineBadge.textContent = '● LOCAL WHISPER (SMALL)';
+      whisperEngineBadge.style.color = '#00f0ff';
+      whisperEngineBadge.style.borderColor = 'rgba(0, 240, 255, 0.4)';
+    } else if (cfg.activeEngine === 'openai_cloud') {
+      whisperEngineBadge.textContent = '☁️ OPENAI CLOUD (WHISPER-1)';
+      whisperEngineBadge.style.color = '#00ff88';
+      whisperEngineBadge.style.borderColor = 'rgba(0, 255, 136, 0.4)';
+    } else {
+      whisperEngineBadge.textContent = '● LOCAL PREVIEW (SIMULATION)';
+      whisperEngineBadge.style.color = '#ffb703';
+      whisperEngineBadge.style.borderColor = 'rgba(255, 183, 3, 0.4)';
+    }
+
+    if (whisperModelBadge) {
+      whisperModelBadge.textContent = `int8 CPU // ${cfg.maxSpeakers || 4}-Spk Diarization (≥ ${cfg.minSegmentSec || 0.8}s)`;
+    }
+  }
+
+  async function triggerLiveSnapshotAnalysis(seconds = 30) {
+    if (!analysisProgressBanner) return;
+    analysisProgressBanner.classList.remove('hidden');
+    analysisProgressTitle.textContent = `Capturing & Transcribing Last ${seconds}s Live Mic...`;
+    analysisProgressSubtext.textContent = 'Running faster-whisper CTranslate2 int8 inference, extracting word timestamps, and clustering up to 4 speakers (≥ 0.8s threshold)...';
+
+    const token = getStoredToken();
+    try {
+      const res = await fetch(`/api/analysis/live-snapshot?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          seconds,
+          language: analysisLanguageSelect?.value || 'auto',
+          keywords: analysisKeywordsInput?.value || '',
+          maxSpeakers: parseInt(analysisMaxSpeakers?.value || '4', 10),
+          minSegmentSec: 0.8
+        })
+      });
+
+      analysisProgressBanner.classList.add('hidden');
+
+      if (res.ok) {
+        const data = await res.json();
+        renderAnalysisReport(data.report);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to analyze live stream audio');
+      }
+    } catch (e) {
+      analysisProgressBanner.classList.add('hidden');
+      alert('Analysis error: ' + e.message);
+    }
+  }
+
+  async function triggerVaultAnalysis(filename) {
+    if (!filename) return;
+    if (!analysisProgressBanner) return;
+    analysisProgressBanner.classList.remove('hidden');
+    analysisProgressTitle.textContent = `Transcribing "${filename}" with Whisper...`;
+    analysisProgressSubtext.textContent = 'Downsampling with FFmpeg to 16kHz mono, generating word timestamps, and clustering speakers...';
+
+    const token = getStoredToken();
+    try {
+      const res = await fetch(`/api/analysis/transcribe?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          filename,
+          language: analysisLanguageSelect?.value || 'auto',
+          keywords: analysisKeywordsInput?.value || '',
+          maxSpeakers: parseInt(analysisMaxSpeakers?.value || '4', 10),
+          minSegmentSec: 0.8
+        })
+      });
+
+      analysisProgressBanner.classList.add('hidden');
+
+      if (res.ok) {
+        const data = await res.json();
+        renderAnalysisReport(data.report);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to transcribe vault recording');
+      }
+    } catch (e) {
+      analysisProgressBanner.classList.add('hidden');
+      alert('Transcription error: ' + e.message);
+    }
+  }
+
+  function renderAnalysisReport(report) {
+    if (!report) return;
+    currentAnalysisReport = report;
+    activeSpeakerFilter = 'all';
+
+    if (analysisResultsWorkspace) {
+      analysisResultsWorkspace.classList.remove('hidden');
+    }
+
+    if (analysisActiveItemName) {
+      analysisActiveItemName.textContent = report.filename;
+    }
+
+    // Bind audio player
+    if (analysisAudioPlayer) {
+      const token = getStoredToken();
+      analysisAudioPlayer.src = `/api/recordings/${encodeURIComponent(report.filename)}?token=${encodeURIComponent(token)}`;
+    }
+
+    // Populate Metrics
+    const m = report.metrics || {};
+    if (resLanguage) resLanguage.textContent = (report.language || 'EN').toUpperCase();
+    if (resLangProb) resLangProb.textContent = `${Math.round((report.languageProbability || 1) * 100)}% confidence`;
+    if (resSpeechRatio) resSpeechRatio.textContent = `${m.speechActivityRatio || 0}%`;
+    if (resSpeechDur) resSpeechDur.textContent = `${m.speechDuration || 0}s speech / ${m.silenceDuration || 0}s silence`;
+    if (resWordCount) resWordCount.textContent = `${m.wordCount || 0} words`;
+    if (resWpm) resWpm.textContent = `${m.wordsPerMinute || 0} WPM`;
+    if (resSpeakerCount) resSpeakerCount.textContent = `${m.speakers?.length || 1} Speakers`;
+    if (resKeywordCount) resKeywordCount.textContent = m.keywordMatchesCount || 0;
+    if (resKeywordHits) resKeywordHits.textContent = `${m.keywordMatchesCount || 0} watchlist hits`;
+
+    // Render Speaker Diarization Breakdown
+    renderDiarization(report);
+
+    // Render Interactive Transcript
+    renderTranscript(report);
+  }
+
+  function getSpeakerIndex(speakerName) {
+    const match = (speakerName || '').match(/Speaker\s*(\d+)/i);
+    return match ? parseInt(match[1], 10) : 1;
+  }
+
+  function renderDiarization(report) {
+    if (!speakerDistributionBar || !speakerLegendStrip || !speakerFilterToggles) return;
+
+    const breakdown = report.metrics?.speakerBreakdown || {};
+    const speakers = Object.keys(breakdown);
+
+    // Distribution Bar
+    let barHtml = '';
+    let legendHtml = '';
+    let filterHtml = '<button class="speaker-filter-btn active" data-speaker="all">All Speakers</button>';
+
+    speakers.forEach(spk => {
+      const info = breakdown[spk];
+      const spkIdx = getSpeakerIndex(spk);
+      const pct = info.percentage || `${Math.round(info.ratio * 100)}%`;
+      const widthPct = Math.max(3, Math.round(info.ratio * 100));
+
+      barHtml += `<div class="speaker-bar-seg spk-${spkIdx}" style="width: ${widthPct}%" title="${escapeHtml(spk)}: ${pct} (${info.seconds}s)"></div>`;
+      legendHtml += `
+        <div class="speaker-legend-item">
+          <span class="speaker-dot spk-${spkIdx}"></span>
+          <span><strong>${escapeHtml(spk)}:</strong> ${pct} (${info.seconds}s)</span>
+        </div>
+      `;
+      filterHtml += `<button class="speaker-filter-btn" data-speaker="${escapeHtml(spk)}">${escapeHtml(spk)}</button>`;
+    });
+
+    speakerDistributionBar.innerHTML = barHtml || '<div class="speaker-bar-seg spk-1" style="width: 100%"></div>';
+    speakerLegendStrip.innerHTML = legendHtml || '<div class="speaker-legend-item"><span class="speaker-dot spk-1"></span> Speaker 1 (100%)</div>';
+    speakerFilterToggles.innerHTML = filterHtml;
+
+    // Filter toggle listeners
+    speakerFilterToggles.querySelectorAll('.speaker-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        speakerFilterToggles.querySelectorAll('.speaker-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeSpeakerFilter = btn.getAttribute('data-speaker') || 'all';
+        applyTranscriptFilters();
+      });
+    });
+  }
+
+  function renderTranscript(report) {
+    if (!transcriptBody) return;
+    const segments = report.segments || [];
+
+    if (transcriptItemBadge) {
+      transcriptItemBadge.textContent = `${segments.length} Segments`;
+    }
+
+    if (segments.length === 0) {
+      transcriptBody.innerHTML = '<div class="empty-row" style="padding: 20px; text-align: center; color: var(--text-dim);">No speech detected in this audio segment.</div>';
+      return;
+    }
+
+    // Determine flagged keywords
+    const kwMatches = new Set((report.metrics?.keywordMatches || []).map(m => (m.keyword || '').toLowerCase()));
+
+    let html = '';
+    segments.forEach(seg => {
+      const spkIdx = getSpeakerIndex(seg.speaker);
+      const timeStr = formatTime(seg.start);
+
+      // Render words with spans
+      let wordsHtml = '';
+      if (seg.words && seg.words.length > 0) {
+        seg.words.forEach(w => {
+          const cleanWord = (w.word || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const isKw = kwMatches.has(cleanWord);
+          wordsHtml += `<span class="transcript-word ${isKw ? 'keyword-hit' : ''}" data-start="${w.start}" data-end="${w.end}" title="[${w.start}s - ${w.end}s]">${escapeHtml(w.word)}</span> `;
+        });
+      } else {
+        wordsHtml = escapeHtml(seg.text);
+      }
+
+      html += `
+        <div class="transcript-segment-row" data-segment-id="${seg.id}" data-start="${seg.start}" data-end="${seg.end}" data-speaker="${escapeHtml(seg.speaker || 'Speaker 1')}">
+          <div class="segment-meta">
+            <button class="segment-time-btn" data-time="${seg.start}">[${timeStr}]</button>
+            <span class="segment-speaker-badge spk-${spkIdx}">${escapeHtml(seg.speaker || 'Speaker 1')}</span>
+          </div>
+          <div class="segment-text-content">
+            ${wordsHtml}
+          </div>
+        </div>
+      `;
+    });
+
+    transcriptBody.innerHTML = html;
+
+    // Attach click-to-seek listeners
+    transcriptBody.querySelectorAll('.segment-time-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const t = parseFloat(btn.getAttribute('data-time'));
+        if (!isNaN(t) && analysisAudioPlayer) {
+          analysisAudioPlayer.currentTime = t;
+          analysisAudioPlayer.play().catch(() => {});
+        }
+      });
+    });
+
+    transcriptBody.querySelectorAll('.transcript-word').forEach(wordEl => {
+      wordEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const t = parseFloat(wordEl.getAttribute('data-start'));
+        if (!isNaN(t) && analysisAudioPlayer) {
+          analysisAudioPlayer.currentTime = t;
+          analysisAudioPlayer.play().catch(() => {});
+        }
+      });
+    });
+  }
+
+  // Synchronized Karaoke-style word glow and segment highlight
+  if (analysisAudioPlayer) {
+    analysisAudioPlayer.addEventListener('timeupdate', () => {
+      const cur = analysisAudioPlayer.currentTime;
+      if (!transcriptBody) return;
+
+      // 1. Highlight active segment row
+      transcriptBody.querySelectorAll('.transcript-segment-row').forEach(row => {
+        const start = parseFloat(row.getAttribute('data-start'));
+        const end = parseFloat(row.getAttribute('data-end'));
+        if (cur >= start && cur <= end) {
+          row.classList.add('active-segment');
+        } else {
+          row.classList.remove('active-segment');
+        }
+      });
+
+      // 2. Highlight active word span
+      transcriptBody.querySelectorAll('.transcript-word').forEach(wEl => {
+        const start = parseFloat(wEl.getAttribute('data-start'));
+        const end = parseFloat(wEl.getAttribute('data-end'));
+        if (cur >= start && cur <= end) {
+          wEl.classList.add('active-word');
+        } else {
+          wEl.classList.remove('active-word');
+        }
+      });
+    });
+  }
+
+  function applyTranscriptFilters() {
+    if (!transcriptBody) return;
+    const searchVal = (transcriptSearchInput?.value || '').toLowerCase().trim();
+
+    transcriptBody.querySelectorAll('.transcript-segment-row').forEach(row => {
+      const spk = row.getAttribute('data-speaker') || '';
+      const text = row.querySelector('.segment-text-content')?.textContent.toLowerCase() || '';
+
+      const matchesSpeaker = (activeSpeakerFilter === 'all' || spk === activeSpeakerFilter);
+      const matchesSearch = !searchVal || text.includes(searchVal);
+
+      if (matchesSpeaker && matchesSearch) {
+        row.style.display = 'flex';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  if (transcriptSearchInput) {
+    transcriptSearchInput.addEventListener('input', applyTranscriptFilters);
+  }
+  if (btnClearTranscriptSearch) {
+    btnClearTranscriptSearch.addEventListener('click', () => {
+      if (transcriptSearchInput) transcriptSearchInput.value = '';
+      applyTranscriptFilters();
+    });
+  }
+
+  if (btnAnalyzeLive30s) {
+    btnAnalyzeLive30s.addEventListener('click', () => triggerLiveSnapshotAnalysis(30));
+  }
+
+  if (btnAnalyzeVaultFile) {
+    btnAnalyzeVaultFile.addEventListener('click', () => {
+      const file = analysisVaultSelect?.value;
+      if (file) {
+        triggerVaultAnalysis(file);
+      } else {
+        alert('Please select a vault recording file to analyze.');
+      }
+    });
+  }
+
+  // Export actions
+  if (btnCopyTranscript) {
+    btnCopyTranscript.addEventListener('click', () => {
+      if (!currentAnalysisReport?.fullText) {
+        alert('No transcript to copy.');
+        return;
+      }
+      navigator.clipboard.writeText(currentAnalysisReport.fullText)
+        .then(() => alert('Transcript copied to clipboard!'))
+        .catch(() => alert('Failed to copy to clipboard.'));
+    });
+  }
+
+  function downloadExport(format) {
+    if (!currentAnalysisReport?.id) {
+      alert('No active analysis to export.');
+      return;
+    }
+    const token = getStoredToken();
+    const url = `/api/analysis/jobs/${encodeURIComponent(currentAnalysisReport.id)}/export/${format}?token=${encodeURIComponent(token)}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentAnalysisReport.id}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  if (btnExportSrt) btnExportSrt.addEventListener('click', () => downloadExport('srt'));
+  if (btnExportVtt) btnExportVtt.addEventListener('click', () => downloadExport('vtt'));
+  if (btnExportTxt) btnExportTxt.addEventListener('click', () => downloadExport('txt'));
+  if (btnExportJson) btnExportJson.addEventListener('click', () => downloadExport('json'));
+
+  // Whisper Settings Modal
+  if (btnConfigWhisper) {
+    btnConfigWhisper.addEventListener('click', async () => {
+      const token = getStoredToken();
+      try {
+        const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfgWhisperBaseUrl) cfgWhisperBaseUrl.value = cfg.localEndpoint || '';
+          if (cfgMaxSpeakers) cfgMaxSpeakers.value = cfg.maxSpeakers || 4;
+          if (cfgMinSegmentSec) cfgMinSegmentSec.value = cfg.minSegmentSec || 0.8;
+        }
+      } catch {}
+      if (whisperModal) whisperModal.classList.add('open');
+    });
+  }
+
+  if (btnCloseWhisperModal) {
+    btnCloseWhisperModal.addEventListener('click', () => whisperModal?.classList.remove('open'));
+  }
+  if (btnCancelWhisperModal) {
+    btnCancelWhisperModal.addEventListener('click', () => whisperModal?.classList.remove('open'));
+  }
+  if (btnSaveWhisperConfig) {
+    btnSaveWhisperConfig.addEventListener('click', async () => {
+      const token = getStoredToken();
+      const payload = {
+        whisperBaseUrl: cfgWhisperBaseUrl?.value || undefined,
+        openaiApiKey: cfgOpenAiKey?.value || undefined,
+        maxSpeakers: parseInt(cfgMaxSpeakers?.value || '4', 10),
+        minSegmentSec: parseFloat(cfgMinSegmentSec?.value || '0.8')
+      };
+      try {
+        const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          whisperModal?.classList.remove('open');
+          loadAnalysisConfig();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          if (whisperConfigMessage) whisperConfigMessage.textContent = err.error || 'Failed to save config';
+        }
+      } catch (e) {
+        if (whisperConfigMessage) whisperConfigMessage.textContent = e.message;
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
