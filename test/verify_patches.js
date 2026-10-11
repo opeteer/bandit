@@ -116,6 +116,9 @@ async function runPatchVerifications() {
     assert.strictEqual(isValidMediaTicket(ticketWildcard, 'any_recording.mp3'), true, 'Wildcard ticket must pass');
     assert.strictEqual(isValidMediaTicket(ticketExpired, 'bandit_rec_test.mp3'), false, 'Expired ticket must be rejected');
     assert.strictEqual(isValidMediaTicket('tampered_ticket', 'bandit_rec_test.mp3'), false, 'Tampered ticket must be rejected');
+
+    const ticketWithColons = generateMediaTicket('bandit_rec_test_part:one:two.mp3', 60);
+    assert.strictEqual(isValidMediaTicket(ticketWithColons, 'bandit_rec_test_part:one:two.mp3'), true, 'Ticket with colons in filename must validate');
     console.log('  PASS: Short-lived media tickets protect master password from URL exposure.');
   } catch (err) {
     console.error('  FAIL SEC-04:', err.message);

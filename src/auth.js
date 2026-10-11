@@ -118,8 +118,10 @@ function isValidMediaTicket(ticket, filename) {
   try {
     const raw = Buffer.from(ticket, 'base64url').toString('utf8');
     const parts = raw.split(':');
-    if (parts.length !== 3) return false;
-    const [expiresAtStr, ticketFilename, sig] = parts;
+    if (parts.length < 3) return false;
+    const sig = parts.pop();
+    const expiresAtStr = parts.shift();
+    const ticketFilename = parts.join(':');
     const expiresAt = parseInt(expiresAtStr, 10);
     if (isNaN(expiresAt) || Math.floor(Date.now() / 1000) > expiresAt) {
       return false; // Expired

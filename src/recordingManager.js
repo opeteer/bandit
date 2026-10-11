@@ -370,9 +370,10 @@ class RecordingManager extends EventEmitter {
    * Manually delete a recording file.
    */
   deleteRecording(filename) {
+    if (!filename || typeof filename !== 'string') return false;
     // Sanitize filename to prevent directory traversal
     const safeName = path.basename(filename);
-    if (!safeName.startsWith('bandit_rec_')) {
+    if (!safeName.startsWith('bandit_rec_') || (!safeName.endsWith('.mp3') && !safeName.endsWith('.wav'))) {
       throw new Error('Invalid recording filename');
     }
 
@@ -380,7 +381,12 @@ class RecordingManager extends EventEmitter {
       throw new Error('Cannot delete currently recording active segment');
     }
 
-    const targetPath = path.join(this.recordingsDir, safeName);
+    const rootDir = path.resolve(this.recordingsDir);
+    const targetPath = path.resolve(rootDir, safeName);
+    if (!targetPath.startsWith(rootDir + path.sep) && targetPath !== rootDir) {
+      throw new Error('Access denied: Invalid recording path');
+    }
+
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
       console.log(`[RecordingManager] Deleted recording: ${safeName}`);
