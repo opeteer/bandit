@@ -203,6 +203,31 @@ async function runPatchVerifications() {
   }
 
   // ---------------------------------------------------------------------------
+  // BUG-03 (DoS): AudioCapture chunkMs and chunkSizeBytes bounds check
+  // ---------------------------------------------------------------------------
+  console.log('\n[Test 5b] Testing BUG-03: AudioCapture chunk bounds enforcement (CHUNK_MS=0)...');
+  try {
+    const zeroCapture = new AudioCapture({ chunkMs: 0 });
+    assert(zeroCapture.chunkSizeBytes >= 128, `chunkSizeBytes must be >= 128, got ${zeroCapture.chunkSizeBytes}`);
+    assert(zeroCapture.chunkMs >= 10, `chunkMs must be >= 10, got ${zeroCapture.chunkMs}`);
+
+    // Verify handleProcessedAudioChunk emits when input exceeds chunkSizeBytes without infinite loop
+    let emitted = 0;
+    zeroCapture.on('data', () => emitted++);
+    zeroCapture.handleProcessedAudioChunk(Buffer.alloc(zeroCapture.chunkSizeBytes + 100, 0));
+    assert(emitted > 0, 'Must emit chunk without looping infinitely');
+
+    // Also verify resilience if chunkSizeBytes was corrupted to 0
+    zeroCapture.chunkSizeBytes = 0;
+    zeroCapture.handleProcessedAudioChunk(Buffer.alloc(2000, 0));
+    assert(emitted > 1, 'minChunk fallback prevents infinite loop when chunkSizeBytes is 0');
+    console.log('  PASS: chunkMs=0 is safely clamped to >= 10ms and chunkSizeBytes >= 128.');
+  } catch (err) {
+    console.error('  FAIL BUG-03 bounds:', err.message);
+    failures++;
+  }
+
+  // ---------------------------------------------------------------------------
   // REST API Server Tests (Port 8085)
   // ---------------------------------------------------------------------------
   console.log(`\n[Test Setup] Spawning test server on port ${PORT}...`);
@@ -270,6 +295,16 @@ async function runPatchVerifications() {
     assert.strictEqual(travDelRes.status, 404, 'Traversal delete attempt via HTTP must return 404');
     console.log('  PASS: HTTP traversal attempts are rejected.');
 
+    // Test 10: SEC-05 Security Headers & X-Powered-By removal
+    console.log('\n[Test 10] Testing SEC-05: HTTP Security Headers & absence of X-Powered-By...');
+    const statusRes = await httpGet('/api/status');
+    assert.strictEqual(statusRes.headers['x-powered-by'], undefined, 'X-Powered-By must not be advertised');
+    assert.strictEqual(statusRes.headers['x-frame-options'], 'DENY', 'X-Frame-Options must be DENY');
+    assert.strictEqual(statusRes.headers['x-content-type-options'], 'nosniff', 'X-Content-Type-Options must be nosniff');
+    assert.strictEqual(statusRes.headers['referrer-policy'], 'no-referrer', 'Referrer-Policy must be no-referrer');
+    assert(statusRes.headers['content-security-policy']?.includes("default-src 'self'"), 'CSP must be set');
+    console.log('  PASS: Security headers properly attached and X-Powered-By disabled.');
+
   } catch (err) {
     console.error('  FAIL REST API patch tests:', err.message);
     failures++;
@@ -279,7 +314,7 @@ async function runPatchVerifications() {
 
   console.log('\n======================================================');
   if (failures === 0) {
-    console.log('  🎉 ALL PATCH & SECURITY VERIFICATION TESTS PASSED (9/9)!');
+    console.log('  🎉 ALL PATCH & SECURITY VERIFICATION TESTS PASSED (11/11)!');
     console.log('======================================================\n');
   } else {
     console.error(`  ❌ ${failures} PATCH VERIFICATION TEST(S) FAILED!`);

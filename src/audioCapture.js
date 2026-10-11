@@ -20,9 +20,10 @@ class AudioCapture extends EventEmitter {
     this.lastConnectedDevice = null;
     this.sampleRate = parseInt(options.sampleRate || process.env.SAMPLE_RATE || '24000', 10);
     this.channels = parseInt(options.channels || process.env.CHANNELS || '1', 10);
-    this.chunkMs = parseInt(options.chunkMs || process.env.CHUNK_MS || '40', 10);
+    const rawChunkMs = parseInt(options.chunkMs || process.env.CHUNK_MS || '40', 10);
+    this.chunkMs = (!isNaN(rawChunkMs) && rawChunkMs >= 10) ? rawChunkMs : 40;
     this.bytesPerSample = 2; // 16-bit PCM = 2 bytes
-    this.chunkSizeBytes = Math.floor((this.sampleRate * this.channels * this.bytesPerSample * this.chunkMs) / 1000);
+    this.chunkSizeBytes = Math.max(128, Math.floor((this.sampleRate * this.channels * this.bytesPerSample * this.chunkMs) / 1000));
 
     // EasyEffects DSP Engine configuration
     this.dspPreset = options.dspPreset || process.env.DSP_PRESET || 'broadcast';
@@ -275,9 +276,10 @@ class AudioCapture extends EventEmitter {
       this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
     }
 
-    while (this.buffer.length >= this.chunkSizeBytes) {
-      const chunk = this.buffer.subarray(0, this.chunkSizeBytes);
-      this.buffer = this.buffer.subarray(this.chunkSizeBytes);
+    const minChunk = Math.max(128, this.chunkSizeBytes || 1920);
+    while (this.buffer.length >= minChunk) {
+      const chunk = this.buffer.subarray(0, minChunk);
+      this.buffer = this.buffer.subarray(minChunk);
       this.emit('data', chunk);
     }
   }

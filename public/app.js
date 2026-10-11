@@ -117,7 +117,9 @@
     if (!toastContainer) return;
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `<span>${message}</span>`;
+    const span = document.createElement('span');
+    span.textContent = message;
+    toast.appendChild(span);
     toastContainer.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';

@@ -24,6 +24,17 @@ const AUTH_TOKEN = (process.env.AUTH_TOKEN || '').trim();
 
 // Initialize Express
 const app = express();
+app.disable('x-powered-by');
+
+// Security Headers (SEC-05)
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' ws: wss:; img-src 'self' data:;");
+  next();
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
