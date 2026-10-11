@@ -64,18 +64,23 @@ def extract_acoustic_features(audio_data: np.ndarray, sr: int, start_sec: float,
     freqs = np.fft.rfftfreq(len(chunk), 1.0 / sr)
     spectral_centroid = np.sum(freqs * fft_vals) / (np.sum(fft_vals) + 1e-9)
 
-    # Autocorrelation for pitch estimation (F0)
-    corr = np.correlate(chunk, chunk, mode="full")
+    # Autocorrelation for pitch estimation (F0) with vocal lag constraints
+    max_lag = int(sr / 50)  # ~320 samples at 16kHz
+    min_lag = max(1, int(sr / 500))  # ~32 samples at 16kHz
+    window_len = min(len(chunk), max_lag * 4)
+    sub_chunk = chunk[:window_len]
+    corr = np.correlate(sub_chunk, sub_chunk, mode="full")
     corr = corr[len(corr) // 2:]
-    d = np.diff(corr)
-    start_idx = np.where(d > 0)[0]
     pitch = 120.0  # fallback
-    if len(start_idx) > 0:
-        peak_idx = np.argmax(corr[start_idx[0]:]) + start_idx[0]
-        if peak_idx > 0:
-            pitch = sr / peak_idx
-            if pitch < 60 or pitch > 450:
-                pitch = 120.0
+    if len(corr) > max_lag:
+        search_region = corr[min_lag:max_lag]
+        if len(search_region) > 0:
+            peak_offset = np.argmax(search_region)
+            peak_idx = min_lag + peak_offset
+            if peak_idx > 0:
+                calc_pitch = sr / peak_idx
+                if 60 <= calc_pitch <= 450:
+                    pitch = float(calc_pitch)
 
     return np.array([pitch, spectral_centroid, energy])
 

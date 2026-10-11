@@ -6,14 +6,14 @@
 const crypto = require('crypto');
 
 /**
- * Compare two strings in constant time to prevent timing attacks.
+ * Compare two strings in constant time to prevent timing and length attacks.
+ * Hashing both values to 32-byte SHA-256 digests ensures equal length comparison.
  */
 function safeCompare(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  const hashA = crypto.createHash('sha256').update(a).digest();
+  const hashB = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
 }
 
 /**
@@ -95,9 +95,52 @@ function authMiddleware(req, res, next) {
   });
 }
 
+/**
+ * Generate a short-lived HMAC-SHA256 signed ticket for media streaming.
+ * Valid for expiresInSeconds (default 120s).
+ */
+function generateMediaTicket(filename = '*', expiresInSeconds = 120) {
+  const secret = (process.env.AUTH_TOKEN || 'bandit-media-key').trim();
+  const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  const payload = `${expiresAt}:${filename}`;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return Buffer.from(`${payload}:${sig}`).toString('base64url');
+}
+
+/**
+ * Validate a media ticket for a requested file.
+ */
+function isValidMediaTicket(ticket, filename) {
+  const secret = (process.env.AUTH_TOKEN || '').trim();
+  if (!secret) return true; // Auth disabled
+  if (!ticket || typeof ticket !== 'string') return false;
+
+  try {
+    const raw = Buffer.from(ticket, 'base64url').toString('utf8');
+    const parts = raw.split(':');
+    if (parts.length !== 3) return false;
+    const [expiresAtStr, ticketFilename, sig] = parts;
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || Math.floor(Date.now() / 1000) > expiresAt) {
+      return false; // Expired
+    }
+    if (ticketFilename !== '*' && ticketFilename !== filename) {
+      return false; // File mismatch
+    }
+
+    const payload = `${expiresAt}:${ticketFilename}`;
+    const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    return safeCompare(sig, expectedSig);
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   isValidToken,
   extractToken,
   authMiddleware,
-  safeCompare
+  safeCompare,
+  generateMediaTicket,
+  isValidMediaTicket
 };

@@ -217,10 +217,11 @@ class AudioCapture extends EventEmitter {
         });
       }
 
-      // Route through active DSP filter pipeline or direct bypass
+      // Route through active DSP filter pipeline or direct bypass fallback
       if (this.filterProcess && this.filterProcess.stdin && this.filterProcess.stdin.writable) {
         this.filterProcess.stdin.write(data);
-      } else if (!this.activeFilterString) {
+      } else {
+        // Direct bypass fallback: ensure audio chunks never drop if filter process is dead
         this.handleProcessedAudioChunk(data);
       }
     });
@@ -330,15 +331,32 @@ class AudioCapture extends EventEmitter {
       newFilterProc.stdin.on('error', () => {});
       newFilterProc.on('error', (err) => {
         console.error('[AudioCapture DSP] Filter process error:', err.message);
+        if (this.filterProcess === newFilterProc) {
+          this.filterProcess = null;
+          this.emit('dsp_error', { error: err.message, message: 'DSP filter error. Switched to direct bypass.' });
+        }
       });
       newFilterProc.stderr.on('data', (data) => {
         const msg = data.toString().trim();
         if (msg) console.error(`[AudioCapture DSP stderr]: ${msg}`);
       });
 
+      newFilterProc.on('close', (code, signal) => {
+        if (!newFilterProc._intentionalClose && this.filterProcess === newFilterProc) {
+          console.warn(`[AudioCapture DSP] Filter process terminated unexpectedly (code ${code}, signal ${signal}). Switched to direct bypass.`);
+          this.filterProcess = null;
+          this.emit('dsp_error', {
+            code,
+            signal,
+            message: 'DSP filter process crashed. Live audio continuing in direct bypass mode.'
+          });
+        }
+      });
+
       const oldFilter = this.filterProcess;
       this.filterProcess = newFilterProc;
       if (oldFilter) {
+        oldFilter._intentionalClose = true;
         try {
           oldFilter.kill('SIGTERM');
         } catch {}

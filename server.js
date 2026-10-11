@@ -13,9 +13,9 @@ const { WebSocketServer, WebSocket } = require('ws');
 const AudioCapture = require('./src/audioCapture');
 const RecordingManager = require('./src/recordingManager');
 const WhisperAnalyzer = require('./src/whisperAnalyzer');
-const { isValidToken, extractToken, authMiddleware } = require('./src/auth');
+const { isValidToken, extractToken, authMiddleware, generateMediaTicket, isValidMediaTicket } = require('./src/auth');
 const { scanAudioDevices, getDeviceDisplayName } = require('./src/deviceScanner');
-const { getDspPresetsList } = require('./src/dspFilters');
+const { DSP_PRESETS, getDspPresetsList } = require('./src/dspFilters');
 
 const PORT = parseInt(process.env.PORT || '8099', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -29,7 +29,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize HTTP & WebSocket Server
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({
+  noServer: true,
+  handleProtocols: (protocols) => {
+    if (protocols.has('bandit-v1')) return 'bandit-v1';
+    return false;
+  }
+});
 
 // Initialize Audio Capture Supervisor
 const audioCapture = new AudioCapture({
@@ -102,6 +108,11 @@ audioCapture.on('device_connected', (dev) => {
 audioCapture.on('dsp_changed', (dspData) => {
   console.log(`[Server] EasyEffects DSP preset switched to: ${dspData.preset}`);
   broadcastControlMessage({ type: 'dsp_changed', ...dspData });
+});
+
+audioCapture.on('dsp_error', (dspError) => {
+  console.warn(`[Server] EasyEffects DSP Error: ${dspError.message}`);
+  broadcastControlMessage({ type: 'dsp_error', ...dspError });
 });
 
 audioCapture.on('error', (err) => {
@@ -177,6 +188,14 @@ app.post('/api/auth/verify', (req, res) => {
   return res.json({ valid, authRequired: true });
 });
 
+// Request short-lived media ticket for playback elements (prevents leaking token in URLs)
+app.post('/api/auth/media-ticket', authMiddleware, (req, res) => {
+  const { filename } = req.body || {};
+  const safeFilename = filename ? path.basename(filename) : '*';
+  const ticket = generateMediaTicket(safeFilename, 120);
+  res.json({ success: true, ticket });
+});
+
 // Device List endpoint (protected if auth enabled)
 app.get('/api/devices', (req, res) => {
   if (AUTH_TOKEN) {
@@ -234,12 +253,20 @@ app.post('/api/devices/scan', authMiddleware, (req, res) => {
 
 // Switch Device endpoint (protected)
 app.post('/api/capture/device', authMiddleware, (req, res) => {
-  const { device, driver } = req.body;
+  const { device, driver } = req.body || {};
   if (!device) {
     return res.status(400).json({ error: 'Missing device parameter' });
   }
 
   const devices = scanAudioDevices();
+  const validIds = devices.map(d => d.id);
+  if (device !== 'auto' && device !== 'test' && !validIds.includes(device)) {
+    return res.status(400).json({
+      error: 'Invalid audio device',
+      validDevices: ['auto', ...validIds]
+    });
+  }
+
   const matched = devices.find(d => d.id === device);
   const deviceName = matched ? matched.name : getDeviceDisplayName(device);
   const finalDriver = driver || (matched?.driver || 'auto');
@@ -271,9 +298,16 @@ app.get('/api/dsp/presets', (req, res) => {
 
 // Set EasyEffects DSP Preset endpoint (protected)
 app.post('/api/dsp/preset', authMiddleware, (req, res) => {
-  const { preset, options } = req.body;
+  const { preset, options } = req.body || {};
   if (!preset) {
     return res.status(400).json({ error: 'Missing preset parameter' });
+  }
+
+  if (!DSP_PRESETS[preset]) {
+    return res.status(400).json({
+      error: 'Invalid DSP preset',
+      validPresets: Object.keys(DSP_PRESETS)
+    });
   }
 
   audioCapture.setDspPreset(preset, options || {});
@@ -294,14 +328,32 @@ app.get('/api/recordings', authMiddleware, (req, res) => {
   res.json(recordingManager.listRecordings());
 });
 
+// Middleware to authorize media playback via signed ticket, Bearer token, or token parameter
+function recordingAuthMiddleware(req, res, next) {
+  const secret = (process.env.AUTH_TOKEN || '').trim();
+  if (!secret) return next();
+
+  const safeFilename = path.basename(req.params.filename);
+  if (req.query.ticket && isValidMediaTicket(req.query.ticket, safeFilename)) {
+    return next();
+  }
+
+  return authMiddleware(req, res, next);
+}
+
 // Stream or download recording file (supports HTTP 206 Partial Content / Range header)
-app.get('/api/recordings/:filename', authMiddleware, (req, res) => {
+app.get('/api/recordings/:filename', recordingAuthMiddleware, (req, res) => {
   const safeFilename = path.basename(req.params.filename);
   if (!safeFilename.startsWith('bandit_rec_') || (!safeFilename.endsWith('.mp3') && !safeFilename.endsWith('.wav'))) {
     return res.status(400).json({ error: 'Invalid recording filename' });
   }
 
-  const filePath = path.join(recordingManager.recordingsDir, safeFilename);
+  const rootDir = path.resolve(recordingManager.recordingsDir);
+  const filePath = path.resolve(rootDir, safeFilename);
+  if (!filePath.startsWith(rootDir + path.sep) && filePath !== rootDir) {
+    return res.status(400).json({ error: 'Invalid recording path' });
+  }
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Recording file not found' });
   }
@@ -394,8 +446,8 @@ app.get('/api/analysis/config', authMiddleware, async (req, res) => {
 // Update Whisper configuration (API key or Base URL)
 app.post('/api/analysis/config', authMiddleware, (req, res) => {
   const { openaiApiKey, whisperBaseUrl, model, maxSpeakers, minSegmentSec } = req.body || {};
-  if (openaiApiKey !== undefined) whisperAnalyzer.openaiApiKey = openaiApiKey;
-  if (whisperBaseUrl !== undefined) whisperAnalyzer.whisperBaseUrl = whisperBaseUrl;
+  if (openaiApiKey !== undefined) whisperAnalyzer.openaiApiKey = String(openaiApiKey).trim();
+  if (whisperBaseUrl !== undefined) whisperAnalyzer.whisperBaseUrl = String(whisperBaseUrl).trim();
   if (model !== undefined) whisperAnalyzer.model = model;
   if (maxSpeakers !== undefined) whisperAnalyzer.maxSpeakers = parseInt(maxSpeakers, 10);
   if (minSegmentSec !== undefined) whisperAnalyzer.minSegmentSec = parseFloat(minSegmentSec);
@@ -406,13 +458,26 @@ app.post('/api/analysis/config', authMiddleware, (req, res) => {
 app.post('/api/analysis/live-snapshot', authMiddleware, async (req, res) => {
   try {
     const seconds = parseInt(req.body?.seconds || 30, 10);
-    const recentBuffer = audioCapture.getRecentAudioBuffer(seconds);
+    let recentBuffer = audioCapture.getRecentAudioBuffer(seconds);
+    if (!recentBuffer || recentBuffer.length < 1000) {
+      if (audioCapture.isRunning) {
+        // Wait up to 1.5 seconds if capture supervisor is actively buffering startup chunks
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          recentBuffer = audioCapture.getRecentAudioBuffer(seconds);
+          if (recentBuffer && recentBuffer.length >= 1000) break;
+        }
+      }
+    }
     if (!recentBuffer || recentBuffer.length < 1000) {
       return res.status(400).json({ error: 'No audio captured in rolling buffer yet. Ensure microphone is active.' });
     }
 
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `bandit_rec_snapshot_${timestamp}.mp3`;
+
     const report = await whisperAnalyzer.analyzeAudio(recentBuffer, {
-      filename: `live_mic_last_${seconds}s.mp3`,
+      filename,
       sampleRate: audioCapture.sampleRate,
       channels: audioCapture.channels,
       language: req.body?.language,
@@ -438,7 +503,16 @@ app.post('/api/analysis/transcribe', authMiddleware, async (req, res) => {
     }
 
     const safeFilename = path.basename(filename);
-    const filePath = path.join(recordingManager.recordingsDir, safeFilename);
+    if (!safeFilename.startsWith('bandit_rec_') || (!safeFilename.endsWith('.mp3') && !safeFilename.endsWith('.wav'))) {
+      return res.status(400).json({ error: 'Invalid recording filename' });
+    }
+
+    const rootDir = path.resolve(recordingManager.recordingsDir);
+    const filePath = path.resolve(rootDir, safeFilename);
+    if (!filePath.startsWith(rootDir + path.sep) && filePath !== rootDir) {
+      return res.status(400).json({ error: 'Invalid recording path' });
+    }
+
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'Recording file not found in vault' });
     }

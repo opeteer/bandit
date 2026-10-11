@@ -74,8 +74,8 @@ class WhisperAnalyzer {
    * @param {number} channels e.g. 1
    * @returns {Promise<string>} Path to temporary MP3 file
    */
-  async pcmBufferToAudioFile(pcmBuffer, sampleRate = 24000, channels = 1) {
-    const tempFile = path.join(os.tmpdir(), `bandit_live_snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
+  async pcmBufferToAudioFile(pcmBuffer, sampleRate = 24000, channels = 1, outputFile = null) {
+    const tempFile = outputFile || path.join(os.tmpdir(), `bandit_live_snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`);
     return new Promise((resolve, reject) => {
       const args = [
         '-f', 's16le',
@@ -418,8 +418,9 @@ class WhisperAnalyzer {
 
     try {
       if (Buffer.isBuffer(source)) {
-        originalName = options.filename || `live_snap_${Date.now()}.mp3`;
-        tempOptimized = await this.pcmBufferToAudioFile(source, options.sampleRate || 24000, options.channels || 1);
+        originalName = options.filename || `bandit_rec_snapshot_${Date.now()}.mp3`;
+        const targetPath = path.join(this.recordingsDir, originalName);
+        tempOptimized = await this.pcmBufferToAudioFile(source, options.sampleRate || 24000, options.channels || 1, targetPath);
       } else if (typeof source === 'string') {
         originalName = options.filename || path.basename(source);
         if (!fs.existsSync(source)) {
@@ -451,7 +452,10 @@ class WhisperAnalyzer {
 
     } finally {
       if (tempOptimized && fs.existsSync(tempOptimized)) {
-        try { fs.unlinkSync(tempOptimized); } catch {}
+        const isTmp = path.resolve(tempOptimized).startsWith(path.resolve(os.tmpdir()));
+        if (isTmp) {
+          try { fs.unlinkSync(tempOptimized); } catch {}
+        }
       }
     }
   }
@@ -467,8 +471,14 @@ class WhisperAnalyzer {
   }
 
   getTranscript(id) {
-    const filename = id.endsWith('.json') ? id : `${id}.json`;
-    const targetPath = path.join(this.transcriptsDir, filename);
+    if (!id || typeof id !== 'string') return null;
+    const safeName = path.basename(id);
+    const filename = safeName.endsWith('.json') ? safeName : `${safeName}.json`;
+    const targetPath = path.resolve(this.transcriptsDir, filename);
+    const rootPath = path.resolve(this.transcriptsDir);
+    if (!targetPath.startsWith(rootPath + path.sep) && targetPath !== rootPath) {
+      return null;
+    }
     if (!fs.existsSync(targetPath)) return null;
     try {
       return JSON.parse(fs.readFileSync(targetPath, 'utf8'));
@@ -503,8 +513,14 @@ class WhisperAnalyzer {
   }
 
   deleteTranscript(id) {
-    const filename = id.endsWith('.json') ? id : `${id}.json`;
-    const targetPath = path.join(this.transcriptsDir, filename);
+    if (!id || typeof id !== 'string') return false;
+    const safeName = path.basename(id);
+    const filename = safeName.endsWith('.json') ? safeName : `${safeName}.json`;
+    const targetPath = path.resolve(this.transcriptsDir, filename);
+    const rootPath = path.resolve(this.transcriptsDir);
+    if (!targetPath.startsWith(rootPath + path.sep) && targetPath !== rootPath) {
+      throw new Error('Access denied: Invalid transcript identifier');
+    }
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
       return true;

@@ -379,6 +379,8 @@
   // Low-Latency PCM Audio Playback Queue
   // ---------------------------------------------------------------------------
 
+  let scheduledSources = [];
+
   function playPcmChunk(arrayBuffer) {
     if (!audioCtx || audioCtx.state !== 'running' || !isPlaying) return;
 
@@ -402,13 +404,29 @@
       nextPlayTime = now + 0.025;
     } else if (nextPlayTime > now + 0.150) {
       // Latency drift detected (> 150ms buffer). Reset to prevent lag buildup!
-      nextPlayTime = now + 0.030;
+      const targetTime = now + 0.030;
+      // Stop and disconnect any already scheduled audio sources scheduled beyond targetTime to prevent overlap echo
+      for (const item of scheduledSources) {
+        if (item.scheduledTime >= targetTime) {
+          try { item.source.stop(); } catch {}
+          try { item.source.disconnect(); } catch {}
+        }
+      }
+      scheduledSources = scheduledSources.filter(item => item.scheduledTime < targetTime);
+      nextPlayTime = targetTime;
     }
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(boostGainNode);
     source.start(nextPlayTime);
+
+    const sourceItem = { source, scheduledTime: nextPlayTime, duration: audioBuffer.duration };
+    scheduledSources.push(sourceItem);
+    source.onended = () => {
+      const idx = scheduledSources.indexOf(sourceItem);
+      if (idx !== -1) scheduledSources.splice(idx, 1);
+    };
 
     // Track stream buffer health
     const currentBufferAhead = Math.max(0, Math.round((nextPlayTime - now) * 1000));
@@ -612,7 +630,8 @@
       wsUrl += `?token=${encodeURIComponent(token)}`;
     }
 
-    ws = new WebSocket(wsUrl);
+    const protocols = token ? ['bandit-v1', `token.${encodeURIComponent(token)}`] : ['bandit-v1'];
+    ws = new WebSocket(wsUrl, protocols);
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
@@ -1430,6 +1449,11 @@
   authBtn.addEventListener('click', () => openAuthModal());
   btnCloseModal.addEventListener('click', () => closeAuthModal());
   btnCancelModal.addEventListener('click', () => closeAuthModal());
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) closeAuthModal();
+    });
+  }
 
   btnSaveToken.addEventListener('click', () => {
     const token = tokenInput.value.trim();
@@ -1669,9 +1693,32 @@
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function playRecording(filename) {
+  async function getMediaStreamUrl(filename) {
     const token = getStoredToken();
-    const url = `/api/recordings/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+    if (!token) {
+      return `/api/recordings/${encodeURIComponent(filename)}`;
+    }
+    try {
+      const res = await fetch('/api/auth/media-ticket', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ filename })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ticket) {
+          return `/api/recordings/${encodeURIComponent(filename)}?ticket=${encodeURIComponent(data.ticket)}`;
+        }
+      }
+    } catch {}
+    return `/api/recordings/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+  }
+
+  async function playRecording(filename) {
+    const url = await getMediaStreamUrl(filename);
     if (vaultPlayerTitle) {
       vaultPlayerTitle.textContent = filename;
     }
@@ -1924,8 +1971,9 @@
 
     // Bind audio player
     if (analysisAudioPlayer) {
-      const token = getStoredToken();
-      analysisAudioPlayer.src = `/api/recordings/${encodeURIComponent(report.filename)}?token=${encodeURIComponent(token)}`;
+      getMediaStreamUrl(report.filename).then(url => {
+        analysisAudioPlayer.src = url;
+      });
     }
 
     // Populate Metrics
@@ -2198,12 +2246,17 @@
   if (btnCancelWhisperModal) {
     btnCancelWhisperModal.addEventListener('click', () => whisperModal?.classList.remove('open'));
   }
+  if (whisperModal) {
+    whisperModal.addEventListener('click', (e) => {
+      if (e.target === whisperModal) whisperModal.classList.remove('open');
+    });
+  }
   if (btnSaveWhisperConfig) {
     btnSaveWhisperConfig.addEventListener('click', async () => {
       const token = getStoredToken();
       const payload = {
-        whisperBaseUrl: cfgWhisperBaseUrl?.value || undefined,
-        openaiApiKey: cfgOpenAiKey?.value || undefined,
+        whisperBaseUrl: cfgWhisperBaseUrl?.value ? cfgWhisperBaseUrl.value.trim() : undefined,
+        openaiApiKey: cfgOpenAiKey ? cfgOpenAiKey.value.trim() : '',
         maxSpeakers: parseInt(cfgMaxSpeakers?.value || '4', 10),
         minSegmentSec: parseFloat(cfgMinSegmentSec?.value || '0.8')
       };
@@ -2227,6 +2280,88 @@
         if (whisperConfigMessage) whisperConfigMessage.textContent = e.message;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mutual Audio Exclusion & Accessibility Enhancements
+  // ---------------------------------------------------------------------------
+
+  let isLiveAudioDucked = false;
+
+  function duckLiveAudio() {
+    if (masterGainNode && audioCtx && !isLiveAudioDucked && isPlaying) {
+      isLiveAudioDucked = true;
+      masterGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      showToast('Live mic audio paused for recorded media playback', 'info');
+      announceLiveMessage('Live audio monitoring muted for media playback');
+    }
+  }
+
+  function unduckLiveAudio() {
+    const vaultPlaying = vaultAudioPlayer && !vaultAudioPlayer.paused && !vaultAudioPlayer.ended;
+    const analysisPlaying = analysisAudioPlayer && !analysisAudioPlayer.paused && !analysisAudioPlayer.ended;
+    if (!vaultPlaying && !analysisPlaying && isLiveAudioDucked) {
+      isLiveAudioDucked = false;
+      if (masterGainNode && audioCtx) {
+        masterGainNode.gain.setValueAtTime(parseFloat(volumeSlider.value), audioCtx.currentTime);
+      }
+      announceLiveMessage('Live audio monitoring restored');
+    }
+  }
+
+  if (vaultAudioPlayer) {
+    vaultAudioPlayer.addEventListener('play', duckLiveAudio);
+    vaultAudioPlayer.addEventListener('pause', unduckLiveAudio);
+    vaultAudioPlayer.addEventListener('ended', unduckLiveAudio);
+  }
+
+  if (analysisAudioPlayer) {
+    analysisAudioPlayer.addEventListener('play', duckLiveAudio);
+    analysisAudioPlayer.addEventListener('pause', unduckLiveAudio);
+    analysisAudioPlayer.addEventListener('ended', unduckLiveAudio);
+  }
+
+  // Focus Trapping for Accessible Modals (WCAG 2.4.3)
+  function trapFocus(modalElement) {
+    if (!modalElement) return;
+    const focusable = modalElement.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    modalElement.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    });
+  }
+
+  [authModal, whisperModal, micModal].forEach(m => {
+    if (m) trapFocus(m);
+  });
+
+  // Global Escape Key Dismissal for All Modals (UX-04)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (authModal?.classList.contains('open')) closeAuthModal();
+      if (micModal?.classList.contains('open')) closeMicModal();
+      if (whisperModal?.classList.contains('open')) whisperModal.classList.remove('open');
+    }
+  });
+
+  function announceLiveMessage(text) {
+    const el = document.getElementById('liveAnnouncer');
+    if (el) el.textContent = text;
   }
 
   // ---------------------------------------------------------------------------

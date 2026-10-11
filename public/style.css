@@ -2313,5 +2313,39 @@ canvas#visualizerCanvas {
   }
 }
 
+/* Accessibility screen-reader only utility (WCAG 4.1.3) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive Mobile Header Optimization (UX-03) */
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-badges {
+    width: 100%;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .header-badges .badge,
+  .header-badges .btn {
+    font-size: 0.7rem;
+    padding: 5px 8px;
+  }
+}
+
 
 

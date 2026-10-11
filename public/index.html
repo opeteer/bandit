@@ -47,16 +47,16 @@
     </header>
 
     <!-- Top Navigation Menu Bar -->
-    <nav class="app-nav">
-      <button class="nav-tab active" data-tab="live" id="navTabLive">
+    <nav class="app-nav" role="tablist" aria-label="Main Navigation">
+      <button class="nav-tab active" data-tab="live" id="navTabLive" role="tab" aria-selected="true" aria-controls="viewLive">
         <span class="nav-icon">🎙️</span>
         <span class="nav-text">LIVE SURVEILLANCE</span>
       </button>
-      <button class="nav-tab" data-tab="vault" id="navTabVault">
+      <button class="nav-tab" data-tab="vault" id="navTabVault" role="tab" aria-selected="false" aria-controls="viewVault">
         <span class="nav-icon">📼</span>
         <span class="nav-text">RECORDING VAULT</span>
       </button>
-      <button class="nav-tab" data-tab="analysis" id="navTabAnalysis">
+      <button class="nav-tab" data-tab="analysis" id="navTabAnalysis" role="tab" aria-selected="false" aria-controls="viewAnalysis">
         <span class="nav-icon">🧠</span>
         <span class="nav-text">AUDIO ANALYSIS</span>
         <span class="badge badge-accent">NEW</span>
@@ -66,7 +66,7 @@
     <!-- Main Content -->
     <main class="main-content">
       <!-- Tab 1: Live Surveillance View -->
-      <div class="tab-view active" id="viewLive">
+      <div class="tab-view active" id="viewLive" role="tabpanel" aria-labelledby="navTabLive">
         <!-- Visualizer & VU Meter Section -->
         <section class="visualizer-card">
           <div class="card-header">
@@ -176,7 +176,7 @@
                 <span>Noise Gate Threshold</span>
                 <span id="dspGateVal">-34 dB</span>
               </div>
-              <input type="range" id="sliderGateThreshold" min="-50" max="-15" step="1" value="-34" class="slider">
+              <input type="range" id="sliderGateThreshold" min="-50" max="-15" step="1" value="-34" class="slider" aria-label="Noise Gate Threshold in dB">
               <small class="control-hint">Cuts room hiss when nobody is talking</small>
             </div>
 
@@ -185,7 +185,7 @@
                 <span>Denoise Intensity</span>
                 <span id="dspDenoiseVal">-25 dB</span>
               </div>
-              <input type="range" id="sliderDenoiseNf" min="-40" max="-10" step="1" value="-25" class="slider">
+              <input type="range" id="sliderDenoiseNf" min="-40" max="-10" step="1" value="-25" class="slider" aria-label="Denoise Noise Floor in dB">
               <small class="control-hint">Spectral background noise suppression</small>
             </div>
 
@@ -194,7 +194,7 @@
                 <span>Voice Presence Boost</span>
                 <span id="dspBoostVal">+3.0 dB</span>
               </div>
-              <input type="range" id="sliderVoiceBoost" min="0" max="6" step="0.5" value="3.0" class="slider accent-slider">
+              <input type="range" id="sliderVoiceBoost" min="0" max="6" step="0.5" value="3.0" class="slider accent-slider" aria-label="Voice Presence Boost in dB">
               <small class="control-hint">Consonant clarity enhancement (3.2 kHz)</small>
             </div>
           </div>
@@ -206,7 +206,7 @@
         <!-- Player Controls Card -->
         <div class="card player-card">
           <div class="card-header">
-            <h3>AUDIO PLAYBACK</h3>
+            <h3>LIVE MONITOR PLAYBACK</h3>
             <span class="badge" id="streamHealthBadge">IDLE</span>
           </div>
           <div class="card-body">
@@ -228,19 +228,19 @@
             <!-- Volume Sliders -->
             <div class="control-group">
               <div class="control-label">
-                <span>Output Volume</span>
+                <span>Live Monitor Volume</span>
                 <span id="volumeValue">100%</span>
               </div>
-              <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" class="slider">
+              <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" class="slider" aria-label="Live Stream Output Volume">
             </div>
 
             <div class="control-group">
               <div class="control-label">
-                <span>Microphone Gain Boost</span>
+                <span>Live Microphone Gain Boost</span>
                 <span id="gainValue">1.0x</span>
               </div>
-              <input type="range" id="gainSlider" min="1" max="5" step="0.1" value="1" class="slider accent-slider">
-              <small class="control-hint">Amplify faint ambient sounds and distant whispers (up to 5x boost)</small>
+              <input type="range" id="gainSlider" min="1" max="5" step="0.1" value="1" class="slider accent-slider" aria-label="Live Stream Microphone Gain Boost">
+              <small class="control-hint">Amplify faint ambient sounds and distant whispers (up to 5x boost, live feed only)</small>
             </div>
           </div>
         </div>
@@ -339,7 +339,7 @@
       <!-- End of Tab 1: Live Surveillance View -->
 
       <!-- Tab 2: 48-Hour Automatic Recording Vault View -->
-      <div class="tab-view" id="viewVault">
+      <div class="tab-view" id="viewVault" role="tabpanel" aria-labelledby="navTabVault">
         <!-- 48-Hour Automatic Recording Vault Section -->
         <section class="card recordings-card" id="recordingsCard">
           <div class="card-header">
@@ -434,7 +434,7 @@
       <!-- End of Tab 2: 48-Hour Automatic Recording Vault View -->
 
       <!-- Tab 3: Audio Analysis & Whisper STT View -->
-      <div class="tab-view" id="viewAnalysis">
+      <div class="tab-view" id="viewAnalysis" role="tabpanel" aria-labelledby="navTabAnalysis">
         <section class="card analysis-card" id="analysisCard">
           <div class="card-header">
             <div class="section-title">
@@ -632,11 +632,11 @@
   </div>
 
   <!-- Token Modal -->
-  <div class="modal-backdrop" id="authModal">
+  <div class="modal-backdrop" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
     <div class="modal">
       <div class="modal-header">
-        <h3>AUTHENTICATION</h3>
-        <button class="modal-close" id="btnCloseModal">&times;</button>
+        <h3 id="authModalTitle">AUTHENTICATION</h3>
+        <button class="modal-close" id="btnCloseModal" aria-label="Close authentication dialog">&times;</button>
       </div>
       <div class="modal-body">
         <p>This Bandit instance is protected. Enter your access token to decrypt and stream host audio.</p>
@@ -654,11 +654,11 @@
   </div>
 
   <!-- Whisper Settings Modal -->
-  <div class="modal-backdrop" id="whisperModal">
+  <div class="modal-backdrop" id="whisperModal" role="dialog" aria-modal="true" aria-labelledby="whisperModalTitle">
     <div class="modal">
       <div class="modal-header">
-        <h3>WHISPER STT CONFIGURATION</h3>
-        <button class="modal-close" id="btnCloseWhisperModal">&times;</button>
+        <h3 id="whisperModalTitle">WHISPER STT CONFIGURATION</h3>
+        <button class="modal-close" id="btnCloseWhisperModal" aria-label="Close Whisper configuration dialog">&times;</button>
       </div>
       <div class="modal-body">
         <p>Configure local Whisper container endpoint or optional cloud OpenAI API fallback.</p>
@@ -691,14 +691,14 @@
   </div>
 
   <!-- Microphone Device Selection Modal -->
-  <div class="modal-backdrop" id="micModal">
+  <div class="modal-backdrop" id="micModal" role="dialog" aria-modal="true" aria-labelledby="micModalTitle">
     <div class="modal modal-lg">
       <div class="modal-header">
         <div class="modal-title-row">
           <span class="modal-icon">🎙️</span>
-          <h3>AVAILABLE MICROPHONES</h3>
+          <h3 id="micModalTitle">AVAILABLE MICROPHONES</h3>
         </div>
-        <button class="modal-close" id="btnCloseMicModal">&times;</button>
+        <button class="modal-close" id="btnCloseMicModal" aria-label="Close microphone selection dialog">&times;</button>
       </div>
       <div class="modal-body">
         <div class="modal-mic-header">
@@ -726,6 +726,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Accessible Live Region for Telemetry and Status Feedback -->
+  <div id="liveAnnouncer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <div id="toastContainer" class="toast-container"></div>
 
