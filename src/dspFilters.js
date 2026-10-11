@@ -37,8 +37,8 @@ const DSP_PRESETS = {
       limiter: true
     },
     buildFilter: (opts = {}) => {
-      const denoiseNf = opts.denoiseNf || -22;
-      const boostGain = opts.boostGain || 4.5;
+      const denoiseNf = Number.isFinite(parseFloat(opts.denoiseNf)) ? parseFloat(opts.denoiseNf) : -22;
+      const boostGain = Number.isFinite(parseFloat(opts.boostGain)) ? parseFloat(opts.boostGain) : 4.5;
       return [
         'highpass=f=90',
         `afftdn=nf=${denoiseNf}`,
@@ -66,9 +66,9 @@ const DSP_PRESETS = {
       limiter: true
     },
     buildFilter: (opts = {}) => {
-      const gateThreshold = opts.gateThreshold || -34;
-      const denoiseNf = opts.denoiseNf || -25;
-      const presenceGain = opts.presenceGain || 3.0;
+      const gateThreshold = Number.isFinite(parseFloat(opts.gateThreshold)) ? parseFloat(opts.gateThreshold) : -34;
+      const denoiseNf = Number.isFinite(parseFloat(opts.denoiseNf)) ? parseFloat(opts.denoiseNf) : -25;
+      const presenceGain = Number.isFinite(parseFloat(opts.presenceGain)) ? parseFloat(opts.presenceGain) : 3.0;
       return [
         'highpass=f=80',
         `afftdn=nf=${denoiseNf}`,
@@ -97,8 +97,8 @@ const DSP_PRESETS = {
       limiter: true
     },
     buildFilter: (opts = {}) => {
-      const gateThreshold = opts.gateThreshold || -26;
-      const denoiseNf = opts.denoiseNf || -35;
+      const gateThreshold = Number.isFinite(parseFloat(opts.gateThreshold)) ? parseFloat(opts.gateThreshold) : -26;
+      const denoiseNf = Number.isFinite(parseFloat(opts.denoiseNf)) ? parseFloat(opts.denoiseNf) : -35;
       return [
         'highpass=f=120',
         `afftdn=nf=${denoiseNf}:tn=1`,

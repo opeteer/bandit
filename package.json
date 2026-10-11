@@ -1,6 +1,6 @@
 {
   "name": "bandit",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Lightweight, self-hosted real-time web audio surveillance application",
   "main": "server.js",
   "type": "commonjs",

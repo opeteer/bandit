@@ -614,6 +614,26 @@ app.delete('/api/analysis/jobs/:id', authMiddleware, (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
+// Centralized API Error & 404 Handler Middleware
+// -----------------------------------------------------------------------------
+
+// API 404 handler
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Centralized error handler (prevents HTML error pages & stack trace leakage)
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+  console.error('[Server Error]:', err.message || err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error'
+  });
+});
+
+// -----------------------------------------------------------------------------
 // WebSocket Stream Handling
 // -----------------------------------------------------------------------------
 
