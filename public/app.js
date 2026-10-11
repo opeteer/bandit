@@ -443,6 +443,7 @@
 
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
@@ -1741,13 +1742,14 @@
         }
       });
       if (res.ok) {
+        showToast('Recording deleted successfully', 'success');
         loadRecordings();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Failed to delete recording');
+        showToast(err.error || 'Failed to delete recording', 'error');
       }
     } catch (e) {
-      alert('Delete error: ' + e.message);
+      showToast('Delete error: ' + e.message, 'error');
     }
   }
 
@@ -1797,10 +1799,13 @@
 
   function switchTab(tabId) {
     navTabs.forEach(tab => {
-      if (tab.getAttribute('data-tab') === tabId) {
+      const isTarget = tab.getAttribute('data-tab') === tabId;
+      if (isTarget) {
         tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
       } else {
         tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
       }
     });
 
@@ -1814,6 +1819,10 @@
         }
       }
     });
+
+    if (tabId === 'live') {
+      requestAnimationFrame(() => resizeCanvas());
+    }
 
     if (tabId === 'analysis') {
       loadAnalysisConfig();
@@ -1911,11 +1920,11 @@
         renderAnalysisReport(data.report);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Failed to analyze live stream audio');
+        showToast(err.error || 'Failed to analyze live stream audio', 'error');
       }
     } catch (e) {
       analysisProgressBanner.classList.add('hidden');
-      alert('Analysis error: ' + e.message);
+      showToast('Analysis error: ' + e.message, 'error');
     }
   }
 
@@ -1950,11 +1959,11 @@
         renderAnalysisReport(data.report);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Failed to transcribe vault recording');
+        showToast(err.error || 'Failed to transcribe vault recording', 'error');
       }
     } catch (e) {
       analysisProgressBanner.classList.add('hidden');
-      alert('Transcription error: ' + e.message);
+      showToast('Transcription error: ' + e.message, 'error');
     }
   }
 
@@ -2123,26 +2132,33 @@
       if (!transcriptBody) return;
 
       // 1. Highlight active segment row
+      let activeRow = null;
       transcriptBody.querySelectorAll('.transcript-segment-row').forEach(row => {
         const start = parseFloat(row.getAttribute('data-start'));
         const end = parseFloat(row.getAttribute('data-end'));
         if (cur >= start && cur <= end) {
           row.classList.add('active-segment');
+          activeRow = row;
         } else {
-          row.classList.remove('active-segment');
+          if (row.classList.contains('active-segment')) {
+            row.classList.remove('active-segment');
+            row.querySelectorAll('.active-word').forEach(w => w.classList.remove('active-word'));
+          }
         }
       });
 
-      // 2. Highlight active word span
-      transcriptBody.querySelectorAll('.transcript-word').forEach(wEl => {
-        const start = parseFloat(wEl.getAttribute('data-start'));
-        const end = parseFloat(wEl.getAttribute('data-end'));
-        if (cur >= start && cur <= end) {
-          wEl.classList.add('active-word');
-        } else {
-          wEl.classList.remove('active-word');
-        }
-      });
+      // 2. Highlight active word span scoped to active segment row
+      if (activeRow) {
+        activeRow.querySelectorAll('.transcript-word').forEach(wEl => {
+          const start = parseFloat(wEl.getAttribute('data-start'));
+          const end = parseFloat(wEl.getAttribute('data-end'));
+          if (cur >= start && cur <= end) {
+            wEl.classList.add('active-word');
+          } else {
+            wEl.classList.remove('active-word');
+          }
+        });
+      }
     });
   }
 
@@ -2185,7 +2201,7 @@
       if (file) {
         triggerVaultAnalysis(file);
       } else {
-        alert('Please select a vault recording file to analyze.');
+        showToast('Please select a vault recording file to analyze.', 'warning');
       }
     });
   }
@@ -2194,18 +2210,18 @@
   if (btnCopyTranscript) {
     btnCopyTranscript.addEventListener('click', () => {
       if (!currentAnalysisReport?.fullText) {
-        alert('No transcript to copy.');
+        showToast('No transcript to copy.', 'warning');
         return;
       }
       navigator.clipboard.writeText(currentAnalysisReport.fullText)
-        .then(() => alert('Transcript copied to clipboard!'))
-        .catch(() => alert('Failed to copy to clipboard.'));
+        .then(() => showToast('Transcript copied to clipboard!', 'success'))
+        .catch(() => showToast('Failed to copy to clipboard.', 'error'));
     });
   }
 
   function downloadExport(format) {
     if (!currentAnalysisReport?.id) {
-      alert('No active analysis to export.');
+      showToast('No active analysis to export.', 'warning');
       return;
     }
     const token = getStoredToken();
@@ -2305,20 +2321,31 @@
     if (!vaultPlaying && !analysisPlaying && isLiveAudioDucked) {
       isLiveAudioDucked = false;
       if (masterGainNode && audioCtx) {
-        masterGainNode.gain.setValueAtTime(parseFloat(volumeSlider.value), audioCtx.currentTime);
+        const targetGain = isMuted ? 0 : parseFloat(volumeSlider.value);
+        masterGainNode.gain.setValueAtTime(targetGain, audioCtx.currentTime);
       }
       announceLiveMessage('Live audio monitoring restored');
     }
   }
 
   if (vaultAudioPlayer) {
-    vaultAudioPlayer.addEventListener('play', duckLiveAudio);
+    vaultAudioPlayer.addEventListener('play', () => {
+      if (analysisAudioPlayer && !analysisAudioPlayer.paused) {
+        analysisAudioPlayer.pause();
+      }
+      duckLiveAudio();
+    });
     vaultAudioPlayer.addEventListener('pause', unduckLiveAudio);
     vaultAudioPlayer.addEventListener('ended', unduckLiveAudio);
   }
 
   if (analysisAudioPlayer) {
-    analysisAudioPlayer.addEventListener('play', duckLiveAudio);
+    analysisAudioPlayer.addEventListener('play', () => {
+      if (vaultAudioPlayer && !vaultAudioPlayer.paused) {
+        vaultAudioPlayer.pause();
+      }
+      duckLiveAudio();
+    });
     analysisAudioPlayer.addEventListener('pause', unduckLiveAudio);
     analysisAudioPlayer.addEventListener('ended', unduckLiveAudio);
   }

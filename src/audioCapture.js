@@ -43,6 +43,9 @@ class AudioCapture extends EventEmitter {
     this.isStopping = false;
     this.isRunning = false;
     this.restartTimer = null;
+    this.isRestarting = false;
+    this.pendingRestartOptions = null;
+    this.activeFfmpegProcs = new Set();
     this.isFallingBack = false;
     this.totalBytesCaptured = 0;
     this.startTime = null;
@@ -173,6 +176,11 @@ class AudioCapture extends EventEmitter {
     try {
       this.process = spawn('ffmpeg', args, {
         stdio: ['ignore', 'pipe', 'pipe']
+      });
+      const p = this.process;
+      this.activeFfmpegProcs.add(p);
+      p.once('close', () => {
+        this.activeFfmpegProcs.delete(p);
       });
     } catch (err) {
       console.error('[AudioCapture] Failed to spawn ffmpeg:', err.message);
@@ -325,6 +333,10 @@ class AudioCapture extends EventEmitter {
       const newFilterProc = spawn('ffmpeg', filterArgs, {
         stdio: ['pipe', 'pipe', 'pipe']
       });
+      this.activeFfmpegProcs.add(newFilterProc);
+      newFilterProc.once('close', () => {
+        this.activeFfmpegProcs.delete(newFilterProc);
+      });
 
       newFilterProc.stdout.on('data', (data) => {
         this.handleProcessedAudioChunk(data);
@@ -360,7 +372,15 @@ class AudioCapture extends EventEmitter {
       if (oldFilter) {
         oldFilter._intentionalClose = true;
         try {
+          if (oldFilter.stdin && !oldFilter.stdin.destroyed) {
+            oldFilter.stdin.destroy();
+          }
           oldFilter.kill('SIGTERM');
+          setTimeout(() => {
+            try {
+              if (oldFilter && !oldFilter.killed) oldFilter.kill('SIGKILL');
+            } catch {}
+          }, 200).unref();
         } catch {}
       }
 
@@ -529,6 +549,17 @@ class AudioCapture extends EventEmitter {
       }
       this.process = null;
     }
+
+    // Safety sweep: ensure any active or orphaned child processes are terminated
+    if (this.activeFfmpegProcs && this.activeFfmpegProcs.size > 0) {
+      for (const p of this.activeFfmpegProcs) {
+        try {
+          if (!p.killed) p.kill('SIGTERM');
+        } catch {}
+      }
+      this.activeFfmpegProcs.clear();
+    }
+
     this.isRunning = false;
     this.buffer = Buffer.alloc(0);
     this.emit('status', { state: 'stopped', isSearching: this.isSearching });
@@ -539,6 +570,13 @@ class AudioCapture extends EventEmitter {
    * Ensures previous FFmpeg process completely terminates before re-opening hardware device.
    */
   restart(newOptions = {}) {
+    if (this.isRestarting) {
+      // Queue latest options to debounce and avoid spawning competing concurrent processes
+      this.pendingRestartOptions = { ...(this.pendingRestartOptions || {}), ...newOptions };
+      return;
+    }
+
+    this.isRestarting = true;
     const oldProc = this.process;
     this.stop();
 
@@ -559,23 +597,39 @@ class AudioCapture extends EventEmitter {
       this.deviceName = getDeviceDisplayName(newOptions.device);
     }
 
+    let hasLaunched = false;
+    let failsafeTimer = null;
+
     const launchNewProcess = () => {
+      if (hasLaunched) return;
+      hasLaunched = true;
+      if (failsafeTimer) {
+        clearTimeout(failsafeTimer);
+        failsafeTimer = null;
+      }
       if (this.restartTimer) {
         clearTimeout(this.restartTimer);
         this.restartTimer = null;
       }
+
       // Give kernel audio drivers 80ms to fully release PCM card handles
       this.restartTimer = setTimeout(() => {
+        this.isRestarting = false;
         if (!this.isRunning) {
           this.start();
+        }
+        // If rapid switches queued during restart, process latest queued configuration
+        if (this.pendingRestartOptions) {
+          const nextOpts = this.pendingRestartOptions;
+          this.pendingRestartOptions = null;
+          this.restart(nextOpts);
         }
       }, 80);
     };
 
     if (oldProc && !oldProc.killed) {
       oldProc.once('close', launchNewProcess);
-      // Failsafe timer in case close event already fired or is delayed
-      setTimeout(launchNewProcess, 350);
+      failsafeTimer = setTimeout(launchNewProcess, 350);
     } else {
       launchNewProcess();
     }

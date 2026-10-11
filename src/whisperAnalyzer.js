@@ -15,7 +15,8 @@ class WhisperAnalyzer {
     this.whisperBaseUrl = options.whisperBaseUrl || process.env.WHISPER_BASE_URL || 'http://localhost:9099/v1';
     this.openaiApiKey = options.openaiApiKey || process.env.OPENAI_API_KEY || '';
     this.model = options.model || process.env.WHISPER_MODEL || 'small';
-    this.maxSpeakers = parseInt(options.maxSpeakers || process.env.WHISPER_MAX_SPEAKERS || '4', 10);
+    const rawSpeakers = parseInt(options.maxSpeakers !== undefined ? options.maxSpeakers : (process.env.WHISPER_MAX_SPEAKERS || '4'), 10);
+    this.maxSpeakers = Number.isInteger(rawSpeakers) ? Math.max(1, Math.min(4, rawSpeakers)) : 4;
     this.minSegmentSec = parseFloat(options.minSegmentSec || process.env.WHISPER_MIN_SEGMENT_SEC || '0.8');
     this.recordingsDir = options.recordingsDir || process.env.RECORDINGS_DIR || path.join(__dirname, '..', 'recordings');
     this.transcriptsDir = path.join(this.recordingsDir, 'transcripts');
@@ -217,11 +218,12 @@ class WhisperAnalyzer {
     const segments = rawJson.segments || [];
     if (segments.length === 0) return rawJson;
 
+    const maxSpk = Number.isInteger(this.maxSpeakers) ? Math.max(1, Math.min(4, this.maxSpeakers)) : 4;
     let currentSpeaker = 1;
     const diarizedSegments = segments.map((seg, i) => {
       const dur = (seg.end || 0) - (seg.start || 0);
       if (i > 0 && dur >= this.minSegmentSec && (i % 2 === 0)) {
-        currentSpeaker = (currentSpeaker % this.maxSpeakers) + 1;
+        currentSpeaker = (currentSpeaker % maxSpk) + 1;
       }
       const speakerName = `Speaker ${currentSpeaker}`;
       const words = (seg.words || []).map(w => ({ ...w, speaker: speakerName }));

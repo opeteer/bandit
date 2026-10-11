@@ -188,14 +188,53 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// In-memory sliding rate limiter for auth attempts (SEC-09)
+const authFailedAttempts = new Map();
+function checkAuthRateLimit(req) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = authFailedAttempts.get(ip);
+  if (record && record.resetAt > now) {
+    if (record.count >= 20) {
+      return false; // throttled
+    }
+  } else {
+    authFailedAttempts.set(ip, { count: 0, resetAt: now + 5 * 60 * 1000 });
+  }
+  return true;
+}
+function recordAuthFailure(req) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = authFailedAttempts.get(ip);
+  if (record && record.resetAt > now) {
+    record.count++;
+  } else {
+    authFailedAttempts.set(ip, { count: 1, resetAt: now + 5 * 60 * 1000 });
+  }
+}
+function clearAuthFailure(req) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  authFailedAttempts.delete(ip);
+}
+
 // Auth Verification endpoint
 app.post('/api/auth/verify', (req, res) => {
+  if (!checkAuthRateLimit(req)) {
+    return res.status(429).json({ error: 'Too many failed authentication attempts. Please try again later.' });
+  }
+
   const token = req.body?.token || '';
   if (!AUTH_TOKEN) {
     return res.json({ valid: true, authRequired: false });
   }
 
   const valid = isValidToken(token);
+  if (valid) {
+    clearAuthFailure(req);
+  } else {
+    recordAuthFailure(req);
+  }
   return res.json({ valid, authRequired: true });
 });
 
@@ -373,17 +412,29 @@ app.get('/api/recordings/:filename', recordingAuthMiddleware, (req, res) => {
   const fileSize = stat.size;
   const contentType = safeFilename.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav';
 
+  if (fileSize === 0) {
+    res.writeHead(200, {
+      'Content-Length': 0,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Content-Disposition': req.query.download === '1' ? `attachment; filename="${safeFilename}"` : 'inline'
+    });
+    return res.end();
+  }
+
   const range = req.headers.range;
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-    if (start >= fileSize || end >= fileSize) {
+    if (isNaN(start) || start >= fileSize || end < start) {
       res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
       return;
     }
 
+    // Strict clamping to fileSize - 1 prevents overrun if file is actively being recorded
+    end = Math.min(end, fileSize - 1);
     const chunkSize = (end - start) + 1;
     const fileStream = fs.createReadStream(filePath, { start, end });
     res.writeHead(206, {
@@ -400,7 +451,8 @@ app.get('/api/recordings/:filename', recordingAuthMiddleware, (req, res) => {
       'Accept-Ranges': 'bytes',
       'Content-Disposition': req.query.download === '1' ? `attachment; filename="${safeFilename}"` : 'inline'
     });
-    fs.createReadStream(filePath).pipe(res);
+    // Strict upper bound { start: 0, end: fileSize - 1 } prevents FFmpeg from overrunning Content-Length on active segments
+    fs.createReadStream(filePath, { start: 0, end: fileSize - 1 }).pipe(res);
   }
 });
 
@@ -460,7 +512,10 @@ app.post('/api/analysis/config', authMiddleware, (req, res) => {
   if (openaiApiKey !== undefined) whisperAnalyzer.openaiApiKey = String(openaiApiKey).trim();
   if (whisperBaseUrl !== undefined) whisperAnalyzer.whisperBaseUrl = String(whisperBaseUrl).trim();
   if (model !== undefined) whisperAnalyzer.model = model;
-  if (maxSpeakers !== undefined) whisperAnalyzer.maxSpeakers = parseInt(maxSpeakers, 10);
+  if (maxSpeakers !== undefined) {
+    const parsed = parseInt(maxSpeakers, 10);
+    whisperAnalyzer.maxSpeakers = Number.isInteger(parsed) ? Math.max(1, Math.min(4, parsed)) : 4;
+  }
   if (minSegmentSec !== undefined) whisperAnalyzer.minSegmentSec = parseFloat(minSegmentSec);
   res.json({ success: true, message: 'Whisper configuration updated' });
 });
