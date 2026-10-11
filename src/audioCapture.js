@@ -8,7 +8,7 @@
 const { spawn } = require('child_process');
 const EventEmitter = require('events');
 const os = require('os');
-const { scanAudioDevices, findAvailableMicrophone } = require('./deviceScanner');
+const { scanAudioDevices, findAvailableMicrophone, getDeviceDisplayName } = require('./deviceScanner');
 const { buildAudioFilterChain, getDspPresetsList } = require('./dspFilters');
 
 class AudioCapture extends EventEmitter {
@@ -16,6 +16,8 @@ class AudioCapture extends EventEmitter {
     super();
     this.device = options.device || process.env.AUDIO_DEVICE || 'auto';
     this.driver = options.driver || process.env.AUDIO_DRIVER || 'auto';
+    this.deviceName = options.name || options.deviceName || null;
+    this.lastConnectedDevice = null;
     this.sampleRate = parseInt(options.sampleRate || process.env.SAMPLE_RATE || '24000', 10);
     this.channels = parseInt(options.channels || process.env.CHANNELS || '1', 10);
     this.chunkMs = parseInt(options.chunkMs || process.env.CHUNK_MS || '40', 10);
@@ -130,12 +132,19 @@ class AudioCapture extends EventEmitter {
       } else {
         this.device = candidate.id;
         this.driver = candidate.driver;
+        this.deviceName = candidate.name;
       }
     }
 
     const resolved = this.resolveDriverAndArgs();
     this.currentDriver = resolved.driver;
     this.currentDevice = resolved.device;
+
+    if (this.isFallingBack || this.isSearching || this.device === 'test' || resolved.driver === 'lavfi') {
+      this.deviceName = 'Synthetic Test Tone Generator';
+    } else if (!this.deviceName) {
+      this.deviceName = getDeviceDisplayName(this.device);
+    }
 
     // Apply EasyEffects DSP filter chain if active
     const filterString = buildAudioFilterChain(this.dspPreset, this.dspOptions);
@@ -164,7 +173,7 @@ class AudioCapture extends EventEmitter {
       'pipe:1'
     ];
 
-    console.log(`[AudioCapture] Spawning FFmpeg with driver "${resolved.driver}", device "${resolved.device}"`);
+    console.log(`[AudioCapture] Spawning FFmpeg with driver "${resolved.driver}", device "${resolved.device}" (${this.deviceName || 'Microphone'})`);
     console.log(`[AudioCapture] Format: PCM s16le, ${this.sampleRate} Hz, ${this.channels} channel(s)`);
 
     try {
@@ -185,6 +194,8 @@ class AudioCapture extends EventEmitter {
       state: 'running',
       driver: this.currentDriver,
       device: this.currentDevice,
+      name: this.deviceName,
+      deviceName: this.deviceName,
       sampleRate: this.sampleRate,
       channels: this.channels,
       dspPreset: this.dspPreset,
@@ -194,8 +205,20 @@ class AudioCapture extends EventEmitter {
       searchCount: this.searchCount
     });
 
+    let hasEmittedConnected = false;
+
     // Handle stdout (PCM binary stream)
     this.process.stdout.on('data', (data) => {
+      if (!hasEmittedConnected && !this.isFallingBack && !this.isSearching && resolved.driver !== 'lavfi' && this.lastConnectedDevice !== this.currentDevice) {
+        hasEmittedConnected = true;
+        this.lastConnectedDevice = this.currentDevice;
+        this.emit('device_connected', {
+          device: this.currentDevice,
+          name: this.deviceName,
+          deviceName: this.deviceName,
+          driver: this.currentDriver
+        });
+      }
       this.totalBytesCaptured += data.length;
       this.buffer = Buffer.concat([this.buffer, data]);
 
@@ -274,18 +297,21 @@ class AudioCapture extends EventEmitter {
         // Switch to detected physical microphone
         this.device = candidate.id;
         this.driver = candidate.driver;
+        this.deviceName = candidate.name;
         this.isFallingBack = false;
         this.isSearching = false;
         this.attemptedHwFallback = false;
+        this.lastConnectedDevice = candidate.id;
 
         this.emit('device_connected', {
           device: candidate.id,
           name: candidate.name,
+          deviceName: candidate.name,
           driver: candidate.driver
         });
 
         // Restart capture with real microphone
-        this.restart({ device: candidate.id, driver: candidate.driver });
+        this.restart({ device: candidate.id, driver: candidate.driver, name: candidate.name });
       } else {
         // Still no device found
         this.emit('status', {
@@ -343,6 +369,7 @@ class AudioCapture extends EventEmitter {
     // If autoSearchMic is enabled and we are not in deliberate test mode, initiate continuous search!
     if (this.autoSearchMic && this.device !== 'test') {
       console.warn('[AudioCapture] Audio capture failed. Initiating continuous search for microphone device...');
+      this.lastConnectedDevice = null;
       this.startContinuousMicSearch();
       return;
     }
@@ -400,6 +427,11 @@ class AudioCapture extends EventEmitter {
       this.isSearching = false;
     }
     if (newOptions.driver) this.driver = newOptions.driver;
+    if (newOptions.name || newOptions.deviceName) {
+      this.deviceName = newOptions.name || newOptions.deviceName;
+    } else if (newOptions.device) {
+      this.deviceName = getDeviceDisplayName(newOptions.device);
+    }
     setTimeout(() => this.start(), 200);
   }
 
@@ -446,6 +478,8 @@ class AudioCapture extends EventEmitter {
     return {
       isRunning: this.isRunning,
       device: this.currentDevice || this.device,
+      name: this.deviceName || getDeviceDisplayName(this.currentDevice || this.device),
+      deviceName: this.deviceName || getDeviceDisplayName(this.currentDevice || this.device),
       driver: this.currentDriver || this.driver,
       sampleRate: this.sampleRate,
       channels: this.channels,

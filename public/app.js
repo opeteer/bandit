@@ -84,6 +84,107 @@
   const btnSwitchDevice = document.getElementById('btnSwitchDevice');
   const deviceNote = document.getElementById('deviceNote');
 
+  // Active Microphone Display & Notifications
+  const headerDeviceBadge = document.getElementById('headerDeviceBadge');
+  const headerDeviceName = document.getElementById('headerDeviceName');
+  const activeMicBanner = document.getElementById('activeMicBanner');
+  const activeMicName = document.getElementById('activeMicName');
+  const activeMicSubtext = document.getElementById('activeMicSubtext');
+  const activeMicStatusBadge = document.getElementById('activeMicStatusBadge');
+  const toastContainer = document.getElementById('toastContainer');
+
+  let currentActiveDeviceName = null;
+
+  function showToast(message, type = 'info') {
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${message}</span>`;
+    toastContainer.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, 4000);
+  }
+
+  function updateConnectedDevice(info) {
+    if (!info) return;
+
+    const devId = info.device || info.id || '--';
+    const devDriver = info.driver || '--';
+    const devName = info.name || info.deviceName || devId;
+
+    if (info.isSearching) {
+      if (headerDeviceBadge) headerDeviceBadge.className = 'badge device-badge searching';
+      if (headerDeviceName) headerDeviceName.textContent = 'MIC: SEARCHING...';
+      if (activeMicBanner) activeMicBanner.className = 'active-mic-banner searching';
+      if (activeMicName) activeMicName.textContent = info.message || 'Scanning host PC for microphone...';
+      if (activeMicSubtext) activeMicSubtext.textContent = 'Probing physical audio hardware in background...';
+      if (activeMicStatusBadge) {
+        activeMicStatusBadge.textContent = 'SEARCHING';
+        activeMicStatusBadge.className = 'badge badge-warning';
+      }
+      if (deviceNote) deviceNote.textContent = info.message || 'Scanning host PC for microphone...';
+      currentActiveDeviceName = null;
+      return;
+    }
+
+    if (info.isFallback || devId === 'test' || devDriver === 'lavfi') {
+      if (headerDeviceBadge) headerDeviceBadge.className = 'badge device-badge fallback';
+      if (headerDeviceName) headerDeviceName.textContent = 'MIC: TEST TONE';
+      if (activeMicBanner) activeMicBanner.className = 'active-mic-banner fallback';
+      if (activeMicName) activeMicName.textContent = 'Synthetic Test Tone Generator';
+      if (activeMicSubtext) activeMicSubtext.textContent = `Mode: Synthetic 440Hz Sine Tone | Driver: ${devDriver}`;
+      if (activeMicStatusBadge) {
+        activeMicStatusBadge.textContent = 'TEST MODE';
+        activeMicStatusBadge.className = 'badge badge-info';
+      }
+      if (deviceNote) deviceNote.textContent = 'Current: Synthetic Test Tone (Hardware mic fallback)';
+      currentActiveDeviceName = 'Synthetic Test Tone Generator';
+      return;
+    }
+
+    // Real physical microphone connected!
+    if (headerDeviceBadge) {
+      headerDeviceBadge.className = 'badge device-badge connected';
+      headerDeviceBadge.title = `Connected: ${devName} (${devId})`;
+    }
+    if (headerDeviceName) {
+      headerDeviceName.textContent = `MIC: ${devName}`;
+    }
+    if (activeMicBanner) {
+      activeMicBanner.className = 'active-mic-banner';
+    }
+    if (activeMicName) {
+      activeMicName.textContent = devName;
+    }
+    if (activeMicSubtext) {
+      activeMicSubtext.textContent = `Device ID: ${devId} | Driver: ${devDriver}`;
+    }
+    if (activeMicStatusBadge) {
+      activeMicStatusBadge.textContent = 'ONLINE';
+      activeMicStatusBadge.className = 'badge badge-success';
+    }
+    if (deviceNote) {
+      deviceNote.textContent = `Connected: ${devName} (${devId})`;
+    }
+
+    // Sync select option if available
+    if (deviceSelect && devId && devId !== 'auto') {
+      for (let i = 0; i < deviceSelect.options.length; i++) {
+        if (deviceSelect.options[i].value === devId) {
+          deviceSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+
+    currentActiveDeviceName = devName;
+  }
+
   // EasyEffects DSP Elements
   const activeDspBadge = document.getElementById('activeDspBadge');
   const btnToggleDspPanel = document.getElementById('btnToggleDspPanel');
@@ -556,9 +657,14 @@
         if (msg.isSearching) {
           streamHealthBadge.textContent = 'SEARCHING FOR MIC...';
           streamHealthBadge.className = 'badge status-badge connecting';
-          deviceNote.textContent = 'Scanning host PC for microphone...';
+          updateConnectedDevice({ isSearching: true, message: 'Scanning host PC for microphone...' });
         } else {
-          deviceNote.textContent = `Current: ${msg.device} (${msg.driver})`;
+          updateConnectedDevice({
+            device: msg.device,
+            name: msg.name || msg.deviceName,
+            driver: msg.driver,
+            isFallback: msg.isFallback
+          });
         }
         if (msg.dspPreset) {
           updateDspUI(msg.dspPreset);
@@ -586,20 +692,27 @@
         if (msg.isSearching) {
           streamHealthBadge.textContent = 'SEARCHING FOR MIC...';
           streamHealthBadge.className = 'badge status-badge connecting';
-          deviceNote.textContent = msg.message || 'Searching host PC for microphone...';
+          updateConnectedDevice({ isSearching: true, message: msg.message });
         } else if (msg.isFallback) {
-          deviceNote.textContent = `Current: Synthetic Test Tone (Hardware mic fallback)`;
+          updateConnectedDevice({ isFallback: true, driver: msg.driver });
         } else {
           streamHealthBadge.textContent = 'STREAMING';
           streamHealthBadge.className = 'badge badge-info';
-          if (msg.device) {
-            deviceNote.textContent = `Current: ${msg.device} (${msg.driver})`;
-          }
+          updateConnectedDevice({
+            device: msg.device,
+            name: msg.name || msg.deviceName,
+            driver: msg.driver
+          });
         }
       } else if (msg.type === 'device_connected') {
         streamHealthBadge.textContent = 'STREAMING';
         streamHealthBadge.className = 'badge badge-info';
-        deviceNote.textContent = `Connected: ${msg.name} (${msg.device})`;
+        updateConnectedDevice({
+          device: msg.device,
+          name: msg.name || msg.deviceName,
+          driver: msg.driver
+        });
+        showToast(`🎤 Microphone Connected: ${msg.name || msg.device}`, 'success');
         loadDevices();
       } else if (msg.type === 'recording_segment_started') {
         activeSegmentState = {
@@ -917,14 +1030,24 @@
       if (res.ok) {
         const data = await res.json();
         deviceSelect.innerHTML = '';
+        let matchedDev = null;
         data.devices.forEach((dev) => {
           const opt = document.createElement('option');
           opt.value = dev.id;
           opt.textContent = `${dev.name} [${dev.driver}]`;
-          if (dev.id === data.currentDevice) opt.selected = true;
+          if (dev.id === data.currentDevice) {
+            opt.selected = true;
+            matchedDev = dev;
+          }
           deviceSelect.appendChild(opt);
         });
-        deviceNote.textContent = `Current: ${data.currentDevice} (${data.currentDriver})`;
+
+        const activeName = data.currentDeviceName || matchedDev?.name || data.currentDevice;
+        updateConnectedDevice({
+          device: data.currentDevice,
+          name: activeName,
+          driver: data.currentDriver
+        });
       }
     } catch {
       // ignore
@@ -944,7 +1067,15 @@
         body: JSON.stringify({ device: selected })
       });
       if (res.ok) {
-        deviceNote.textContent = `Switched to: ${selected}`;
+        const data = await res.json();
+        const devName = data.deviceName || selected;
+        updateConnectedDevice({
+          device: selected,
+          name: devName,
+          driver: data.driver || 'auto'
+        });
+        showToast(`🎙️ Switched to microphone: ${devName}`, 'success');
+        loadDevices();
       } else {
         alert('Failed to switch device. Check authentication or device status.');
       }

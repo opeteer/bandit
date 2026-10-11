@@ -25,6 +25,11 @@
       </div>
 
       <div class="header-badges">
+        <div class="badge device-badge" id="headerDeviceBadge" title="Connected Host Microphone">
+          <span class="device-dot" id="headerDeviceDot"></span>
+          <span class="device-icon">🎙️</span>
+          <span id="headerDeviceName">MIC: DETECTING...</span>
+        </div>
         <div class="badge status-badge" id="connectionBadge">
           <span class="status-dot"></span>
           <span id="connectionText">DISCONNECTED</span>
@@ -272,7 +277,21 @@
 
             <!-- Host Device Selector -->
             <div class="device-selector-group">
-              <label for="deviceSelect">Host Capture Device:</label>
+              <div class="active-mic-banner" id="activeMicBanner">
+                <div class="active-mic-icon-wrap">
+                  <span class="active-mic-icon">🎙️</span>
+                </div>
+                <div class="active-mic-details">
+                  <div class="active-mic-label-row">
+                    <span class="active-mic-label">CONNECTED MICROPHONE</span>
+                    <span class="badge badge-success" id="activeMicStatusBadge">ONLINE</span>
+                  </div>
+                  <div class="active-mic-name" id="activeMicName">Detecting device...</div>
+                  <div class="active-mic-subtext" id="activeMicSubtext">Device ID: -- | Driver: --</div>
+                </div>
+              </div>
+
+              <label for="deviceSelect">Switch Host Capture Device:</label>
               <div class="device-select-row">
                 <select id="deviceSelect" class="form-select">
                   <option value="default">Loading devices...</option>
@@ -638,6 +657,8 @@
       </div>
     </div>
   </div>
+
+  <div id="toastContainer" class="toast-container"></div>
 
   <script src="app.js"></script>
 </body>

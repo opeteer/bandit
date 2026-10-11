@@ -225,6 +225,26 @@ function findAvailableMicrophone(preferredDevice = null) {
   return defaultDevice || null;
 }
 
+/**
+ * Look up the human-readable device name for a given device ID.
+ */
+function getDeviceDisplayName(deviceId) {
+  if (!deviceId || deviceId === 'auto') return 'Auto-detected Microphone';
+  if (deviceId === 'test') return 'Synthetic Test Tone Generator';
+
+  try {
+    const devices = scanAudioDevices();
+    const matched = devices.find(d => d.id === deviceId || d.id === `audio="${deviceId}"` || (d.id && deviceId.includes(d.id)));
+    if (matched && matched.name) {
+      return matched.name;
+    }
+  } catch {
+    // fallback
+  }
+
+  return `Microphone (${deviceId})`;
+}
+
 // If run directly from command line
 if (require.main === module) {
   console.log('\n======================================================');
@@ -261,5 +281,7 @@ if (require.main === module) {
 
 module.exports = {
   scanAudioDevices,
-  findAvailableMicrophone
+  findAvailableMicrophone,
+  getDeviceDisplayName
 };
+

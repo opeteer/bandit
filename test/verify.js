@@ -132,8 +132,8 @@ async function runTests() {
   // Test 4: Devices list endpoint with Bearer auth
   try {
     const res = await httpGet('/api/devices', { Authorization: `Bearer ${TEST_TOKEN}` });
-    if (res.status === 200 && Array.isArray(res.body.devices) && res.body.devices.length > 0) {
-      console.log(`✅ Test 4 Passed: /api/devices returned ${res.body.devices.length} audio input device options`);
+    if (res.status === 200 && Array.isArray(res.body.devices) && res.body.devices.length > 0 && res.body.currentDeviceName) {
+      console.log(`✅ Test 4 Passed: /api/devices returned ${res.body.devices.length} audio input device options (active: "${res.body.currentDeviceName}")`);
     } else {
       console.error('❌ Test 4 Failed:', res);
       failures++;
@@ -167,7 +167,10 @@ async function runTests() {
           try {
             const msg = JSON.parse(data.toString());
             if (msg.type === 'init') {
-              receivedInit = true;
+              receivedInit = Boolean(msg.deviceName);
+              if (msg.deviceName) {
+                console.log(`   [WS Handshake] Connected microphone name: "${msg.deviceName}"`);
+              }
             } else if (msg.type === 'pong') {
               receivedPong = true;
             }

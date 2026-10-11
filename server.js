@@ -14,7 +14,7 @@ const AudioCapture = require('./src/audioCapture');
 const RecordingManager = require('./src/recordingManager');
 const WhisperAnalyzer = require('./src/whisperAnalyzer');
 const { isValidToken, extractToken, authMiddleware } = require('./src/auth');
-const { scanAudioDevices } = require('./src/deviceScanner');
+const { scanAudioDevices, getDeviceDisplayName } = require('./src/deviceScanner');
 const { getDspPresetsList } = require('./src/dspFilters');
 
 const PORT = parseInt(process.env.PORT || '8099', 10);
@@ -188,7 +188,13 @@ app.get('/api/devices', (req, res) => {
 
   try {
     const devices = scanAudioDevices();
-    res.json({ devices, currentDevice: audioCapture.device, currentDriver: audioCapture.driver });
+    const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
+    res.json({
+      devices,
+      currentDevice: audioCapture.device,
+      currentDeviceName,
+      currentDriver: audioCapture.driver
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to scan devices', message: err.message });
   }
@@ -201,9 +207,13 @@ app.post('/api/capture/device', authMiddleware, (req, res) => {
     return res.status(400).json({ error: 'Missing device parameter' });
   }
 
-  console.log(`[Server] Switching audio device to: ${device} (driver: ${driver || 'auto'})`);
-  audioCapture.restart({ device, driver: driver || 'auto' });
-  res.json({ success: true, device, driver: driver || 'auto' });
+  const devices = scanAudioDevices();
+  const matched = devices.find(d => d.id === device);
+  const deviceName = matched ? matched.name : getDeviceDisplayName(device);
+
+  console.log(`[Server] Switching audio device to: ${deviceName} (${device})`);
+  audioCapture.restart({ device, driver: driver || (matched?.driver || 'auto'), name: deviceName });
+  res.json({ success: true, device, deviceName, driver: driver || 'auto' });
 });
 
 // EasyEffects DSP Presets list endpoint
@@ -558,6 +568,8 @@ function onClientAuthenticated(ws) {
     chunkMs: audioCapture.chunkMs,
     format: 'pcm_s16le',
     device: audioCapture.device,
+    name: audioCapture.deviceName || getDeviceDisplayName(audioCapture.device),
+    deviceName: audioCapture.deviceName || getDeviceDisplayName(audioCapture.device),
     driver: audioCapture.driver,
     dspPreset: audioCapture.dspPreset,
     activeFilterString: audioCapture.activeFilterString,
