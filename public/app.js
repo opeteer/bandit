@@ -954,21 +954,21 @@
         preset: presetId,
         options: opts
       }));
-    }
-
-    // 2. Also send via REST API
-    const token = getStoredToken();
-    try {
-      await fetch('/api/dsp/preset', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ preset: presetId, options: opts })
-      });
-    } catch {
-      // ignore
+    } else {
+      // 2. Fallback to REST API if WebSocket is not connected
+      const token = getStoredToken();
+      try {
+        await fetch('/api/dsp/preset', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ preset: presetId, options: opts })
+        });
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -995,7 +995,7 @@
     if (dspUpdateTimer) clearTimeout(dspUpdateTimer);
     dspUpdateTimer = setTimeout(() => {
       applyDspPreset(currentDspPreset, getTuningOptions());
-    }, 250);
+    }, 150);
   }
 
   if (sliderGateThreshold) {

@@ -28,6 +28,7 @@ class AudioCapture extends EventEmitter {
     this.dspPreset = options.dspPreset || process.env.DSP_PRESET || 'broadcast';
     this.dspOptions = options.dspOptions || {};
     this.activeFilterString = null;
+    this.filterProcess = null;
 
     // Auto-search for microphone when missing
     this.autoSearchMic = process.env.AUTO_SEARCH_MIC !== 'false';
@@ -38,6 +39,7 @@ class AudioCapture extends EventEmitter {
     this.attemptedHwFallback = false;
 
     this.process = null;
+    this.isStopping = false;
     this.isRunning = false;
     this.restartTimer = null;
     this.isFallingBack = false;
@@ -146,16 +148,8 @@ class AudioCapture extends EventEmitter {
       this.deviceName = getDeviceDisplayName(this.device);
     }
 
-    // Apply EasyEffects DSP filter chain if active
-    const filterString = buildAudioFilterChain(this.dspPreset, this.dspOptions);
-    const filterArgs = [];
-    if (filterString && !this.isFallingBack && !this.isSearching && resolved.driver !== 'lavfi') {
-      filterArgs.push('-af', filterString);
-      this.activeFilterString = filterString;
-      console.log(`[AudioCapture] EasyEffects DSP Active [${this.dspPreset}]: -af "${filterString}"`);
-    } else {
-      this.activeFilterString = null;
-    }
+    // Build initial EasyEffects DSP filter chain
+    this.activeFilterString = buildAudioFilterChain(this.dspPreset, this.dspOptions);
 
     const args = [
       '-hide_banner',
@@ -165,7 +159,6 @@ class AudioCapture extends EventEmitter {
       '-probesize', '32',
       '-analyzeduration', '0',
       ...resolved.inputArgs,
-      ...filterArgs,
       '-ac', String(this.channels),
       '-ar', String(this.sampleRate),
       '-f', 's16le',
@@ -187,8 +180,12 @@ class AudioCapture extends EventEmitter {
     }
 
     this.isRunning = true;
+    this.isStopping = false;
     this.startTime = Date.now();
     this.buffer = Buffer.alloc(0);
+
+    // Initialize in-memory DSP filter pipeline
+    this.updateFilterPipeline();
 
     this.emit('status', {
       state: 'running',
@@ -207,7 +204,7 @@ class AudioCapture extends EventEmitter {
 
     let hasEmittedConnected = false;
 
-    // Handle stdout (PCM binary stream)
+    // Handle stdout (PCM binary stream from hardware ingestion)
     this.process.stdout.on('data', (data) => {
       if (!hasEmittedConnected && !this.isFallingBack && !this.isSearching && resolved.driver !== 'lavfi' && this.lastConnectedDevice !== this.currentDevice) {
         hasEmittedConnected = true;
@@ -219,23 +216,16 @@ class AudioCapture extends EventEmitter {
           driver: this.currentDriver
         });
       }
-      this.totalBytesCaptured += data.length;
-      this.buffer = Buffer.concat([this.buffer, data]);
 
-      // Maintain rolling circular ring buffer of last 30 seconds
-      this.recentAudioBuffer = Buffer.concat([this.recentAudioBuffer, data]);
-      if (this.recentAudioBuffer.length > this.maxRollingBytes) {
-        this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
-      }
-
-      while (this.buffer.length >= this.chunkSizeBytes) {
-        const chunk = this.buffer.subarray(0, this.chunkSizeBytes);
-        this.buffer = this.buffer.subarray(this.chunkSizeBytes);
-        this.emit('data', chunk);
+      // Route through active DSP filter pipeline or direct bypass
+      if (this.filterProcess && this.filterProcess.stdin && this.filterProcess.stdin.writable) {
+        this.filterProcess.stdin.write(data);
+      } else if (!this.activeFilterString) {
+        this.handleProcessedAudioChunk(data);
       }
     });
 
-    // Handle stderr (FFmpeg error logs)
+    // Handle stderr (FFmpeg capture error logs)
     let stderrLog = '';
     this.process.stderr.on('data', (data) => {
       const msg = data.toString();
@@ -244,22 +234,120 @@ class AudioCapture extends EventEmitter {
       console.error(`[AudioCapture FFmpeg stderr]: ${msg.trim()}`);
     });
 
-    // Handle process termination
-    this.process.on('close', (code) => {
+    // Handle capture process termination
+    this.process.on('close', (code, signal) => {
       this.isRunning = false;
-      console.warn(`[AudioCapture] Process exited with code ${code}`);
+      console.warn(`[AudioCapture] Process exited with code ${code} (signal: ${signal})`);
 
-      if (code !== 0 && code !== null) {
-        this.handleProcessFailure(stderrLog || `Process exited with code ${code}`);
-      } else {
+      if (this.isStopping) {
+        this.isStopping = false;
         this.emit('status', { state: 'stopped', isSearching: this.isSearching });
+        return;
+      }
+
+      // If intentionally stopped or killed via signal, do not treat as crash
+      if (signal === 'SIGTERM' || signal === 'SIGINT' || code === 0 || code === null) {
+        this.emit('status', { state: 'stopped', isSearching: this.isSearching });
+      } else {
+        this.handleProcessFailure(stderrLog || `Process exited with code ${code}`);
       }
     });
 
     this.process.on('error', (err) => {
+      if (this.isStopping) return;
       console.error('[AudioCapture] Process error:', err.message);
       this.handleProcessFailure(err.message);
     });
+  }
+
+  /**
+   * Internal ingestion sink for fully processed/filtered PCM chunks.
+   * Buffers rolling audio for analysis and emits standard chunks to subscribers.
+   */
+  handleProcessedAudioChunk(data) {
+    this.totalBytesCaptured += data.length;
+    this.buffer = Buffer.concat([this.buffer, data]);
+
+    // Maintain rolling circular ring buffer of last 30 seconds
+    this.recentAudioBuffer = Buffer.concat([this.recentAudioBuffer, data]);
+    if (this.recentAudioBuffer.length > this.maxRollingBytes) {
+      this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
+    }
+
+    while (this.buffer.length >= this.chunkSizeBytes) {
+      const chunk = this.buffer.subarray(0, this.chunkSizeBytes);
+      this.buffer = this.buffer.subarray(this.chunkSizeBytes);
+      this.emit('data', chunk);
+    }
+  }
+
+  /**
+   * Dynamically manage in-memory FFmpeg DSP filter pipeline (pipe:0 -> pipe:1).
+   * Swaps filters without interrupting physical audio capture.
+   */
+  updateFilterPipeline() {
+    const filterString = buildAudioFilterChain(this.dspPreset, this.dspOptions);
+    this.activeFilterString = filterString;
+
+    if (!filterString) {
+      // Raw / Bypass mode: no DSP filter process needed
+      if (this.filterProcess) {
+        const oldFilter = this.filterProcess;
+        this.filterProcess = null;
+        try {
+          oldFilter.kill('SIGTERM');
+        } catch {}
+      }
+      return;
+    }
+
+    const filterArgs = [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-probesize', '32',
+      '-analyzeduration', '0',
+      '-f', 's16le',
+      '-ar', String(this.sampleRate),
+      '-ac', String(this.channels),
+      '-i', 'pipe:0',
+      '-af', filterString,
+      '-f', 's16le',
+      '-acodec', 'pcm_s16le',
+      'pipe:1'
+    ];
+
+    try {
+      const newFilterProc = spawn('ffmpeg', filterArgs, {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      newFilterProc.stdout.on('data', (data) => {
+        this.handleProcessedAudioChunk(data);
+      });
+
+      newFilterProc.stdin.on('error', () => {});
+      newFilterProc.on('error', (err) => {
+        console.error('[AudioCapture DSP] Filter process error:', err.message);
+      });
+      newFilterProc.stderr.on('data', (data) => {
+        const msg = data.toString().trim();
+        if (msg) console.error(`[AudioCapture DSP stderr]: ${msg}`);
+      });
+
+      const oldFilter = this.filterProcess;
+      this.filterProcess = newFilterProc;
+      if (oldFilter) {
+        try {
+          oldFilter.kill('SIGTERM');
+        } catch {}
+      }
+
+      console.log(`[AudioCapture] EasyEffects DSP Active [${this.dspPreset}]: -af "${filterString}"`);
+    } catch (err) {
+      console.error('[AudioCapture] Failed to spawn DSP filter process:', err.message);
+    }
   }
 
   /**
@@ -393,7 +481,7 @@ class AudioCapture extends EventEmitter {
   }
 
   /**
-   * Stop the capture process.
+   * Stop the capture process and filter pipeline.
    */
   stop() {
     this.stopContinuousMicSearch();
@@ -403,7 +491,17 @@ class AudioCapture extends EventEmitter {
       this.restartTimer = null;
     }
 
+    if (this.filterProcess) {
+      try {
+        this.filterProcess.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+      this.filterProcess = null;
+    }
+
     if (this.process) {
+      this.isStopping = true;
       try {
         this.process.kill('SIGTERM');
       } catch {
@@ -418,13 +516,17 @@ class AudioCapture extends EventEmitter {
 
   /**
    * Restart capture with current or new options.
+   * Ensures previous FFmpeg process completely terminates before re-opening hardware device.
    */
   restart(newOptions = {}) {
+    const oldProc = this.process;
     this.stop();
+
     if (newOptions.device) {
       this.device = newOptions.device;
       this.isFallingBack = false;
       this.isSearching = false;
+      this.attemptedHwFallback = false;
     }
     if (newOptions.driver) this.driver = newOptions.driver;
     if (newOptions.name || newOptions.deviceName) {
@@ -432,11 +534,32 @@ class AudioCapture extends EventEmitter {
     } else if (newOptions.device) {
       this.deviceName = getDeviceDisplayName(newOptions.device);
     }
-    setTimeout(() => this.start(), 200);
+
+    const launchNewProcess = () => {
+      if (this.restartTimer) {
+        clearTimeout(this.restartTimer);
+        this.restartTimer = null;
+      }
+      // Give kernel audio drivers 80ms to fully release PCM card handles
+      this.restartTimer = setTimeout(() => {
+        if (!this.isRunning) {
+          this.start();
+        }
+      }, 80);
+    };
+
+    if (oldProc && !oldProc.killed) {
+      oldProc.once('close', launchNewProcess);
+      // Failsafe timer in case close event already fired or is delayed
+      setTimeout(launchNewProcess, 350);
+    } else {
+      launchNewProcess();
+    }
   }
 
   /**
    * Dynamically switch or update the EasyEffects DSP preset.
+   * Hot-swaps the DSP filter pipeline in real-time without interrupting hardware capture.
    */
   setDspPreset(presetId, options = {}) {
     console.log(`[AudioCapture] Switching DSP preset to: "${presetId}"`);
@@ -451,8 +574,8 @@ class AudioCapture extends EventEmitter {
       presets: getDspPresetsList(this.dspPreset)
     });
 
-    if (this.isRunning && !this.isFallingBack && !this.isSearching) {
-      this.restart();
+    if (this.isRunning) {
+      this.updateFilterPipeline();
     }
   }
 
