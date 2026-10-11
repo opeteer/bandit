@@ -83,6 +83,22 @@
   const deviceSelect = document.getElementById('deviceSelect');
   const btnSwitchDevice = document.getElementById('btnSwitchDevice');
   const deviceNote = document.getElementById('deviceNote');
+  const deviceCompactRow = document.getElementById('deviceCompactRow');
+
+  // Available Microphones Elements & Action Buttons
+  const btnOpenMicModal = document.getElementById('btnOpenMicModal');
+  const btnRescanMics = document.getElementById('btnRescanMics');
+  const btnToggleCompactSelect = document.getElementById('btnToggleCompactSelect');
+  const micsListGrid = document.getElementById('micsListGrid');
+  const micsCountBadge = document.getElementById('micsCountBadge');
+
+  // Microphone Modal Elements
+  const micModal = document.getElementById('micModal');
+  const btnCloseMicModal = document.getElementById('btnCloseMicModal');
+  const btnCloseMicModalFooter = document.getElementById('btnCloseMicModalFooter');
+  const btnModalRescanMics = document.getElementById('btnModalRescanMics');
+  const modalMicsListContainer = document.getElementById('modalMicsListContainer');
+  const modalCurrentMicName = document.getElementById('modalCurrentMicName');
 
   // Active Microphone Display & Notifications
   const headerDeviceBadge = document.getElementById('headerDeviceBadge');
@@ -94,6 +110,8 @@
   const toastContainer = document.getElementById('toastContainer');
 
   let currentActiveDeviceName = null;
+  let cachedDevices = [];
+  let currentActiveDeviceId = null;
 
   function showToast(message, type = 'info') {
     if (!toastContainer) return;
@@ -171,6 +189,9 @@
     if (deviceNote) {
       deviceNote.textContent = `Connected: ${devName} (${devId})`;
     }
+    if (modalCurrentMicName) {
+      modalCurrentMicName.textContent = devName;
+    }
 
     // Sync select option if available
     if (deviceSelect && devId && devId !== 'auto') {
@@ -183,6 +204,10 @@
     }
 
     currentActiveDeviceName = devName;
+    currentActiveDeviceId = devId;
+    if (typeof updateActiveCardHighlights === 'function') {
+      updateActiveCardHighlights(devId);
+    }
   }
 
   // EasyEffects DSP Elements
@@ -669,6 +694,9 @@
         if (msg.dspPreset) {
           updateDspUI(msg.dspPreset);
         }
+        if (Array.isArray(msg.devices)) {
+          renderAllMicCards(msg.devices, msg.device);
+        }
         if (msg.recording) {
           updateRecordingStats(msg.recording);
           loadRecordings();
@@ -677,6 +705,19 @@
         const rtt = Math.round(performance.now() - msg.clientTime);
         currentLatencyMs = rtt;
         latencyVal.textContent = `${rtt} ms`;
+      } else if (msg.type === 'devices_list') {
+        if (Array.isArray(msg.devices)) {
+          renderAllMicCards(msg.devices, msg.currentDevice);
+        }
+      } else if (msg.type === 'device_changed') {
+        updateConnectedDevice({
+          device: msg.device,
+          name: msg.name || msg.deviceName,
+          driver: msg.driver
+        });
+        if (typeof updateActiveCardHighlights === 'function') {
+          updateActiveCardHighlights(msg.device);
+        }
       } else if (msg.type === 'auth_required') {
         openAuthModal('Authentication required by host.');
       } else if (msg.type === 'auth_error') {
@@ -1020,8 +1061,248 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Device Query & Switch
+  // Available Microphones Listing, Selection & Rescan System
   // ---------------------------------------------------------------------------
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  function createMicCardElement(dev, isCurrentActive) {
+    const card = document.createElement('div');
+    card.className = `mic-card${isCurrentActive ? ' active' : ''}`;
+    card.dataset.deviceId = dev.id;
+    card.dataset.driver = dev.driver || 'auto';
+    card.dataset.isDefault = String(Boolean(dev.isDefault));
+
+    let icon = '🎙️';
+    if (dev.id === 'test' || dev.driver === 'lavfi') {
+      icon = '📻';
+    } else if (dev.driver === 'pulse' || dev.id === 'pipewire' || (dev.name && dev.name.includes('PipeWire')) || dev.isEasyEffects) {
+      icon = '🎛️';
+    }
+
+    const driverLabel = (dev.driver || 'ALSA').toUpperCase();
+
+    card.innerHTML = `
+      <div class="mic-card-header">
+        <div class="mic-card-left">
+          <div class="mic-card-icon">${icon}</div>
+          <div class="mic-card-info">
+            <div class="mic-card-title" title="${escapeHtml(dev.name)}">${escapeHtml(dev.name)}</div>
+            <div class="mic-card-sub">Device ID: <code>${escapeHtml(dev.id)}</code></div>
+          </div>
+        </div>
+        <div class="mic-card-status">
+          ${isCurrentActive ? '<span class="mic-badge active-status"><span class="device-dot"></span> ACTIVE</span>' : ''}
+          ${dev.isDefault && !isCurrentActive ? '<span class="mic-badge default">DEFAULT</span>' : ''}
+        </div>
+      </div>
+      ${dev.description ? `<div class="mic-card-desc">${escapeHtml(dev.description)}</div>` : ''}
+      <div class="mic-card-footer">
+        <div class="mic-card-badges">
+          <span class="mic-badge driver">${driverLabel}</span>
+          ${dev.isEasyEffects ? '<span class="mic-badge" style="color:var(--accent-purple);border-color:rgba(180,90,255,0.3)">EASYEFFECTS</span>' : ''}
+        </div>
+        <button class="btn btn-sm btn-select-mic${isCurrentActive ? ' active-btn' : ''}" data-device="${escapeHtml(dev.id)}" data-driver="${escapeHtml(dev.driver || 'auto')}">
+          ${isCurrentActive ? '✓ Connected' : 'Select Mic'}
+        </button>
+      </div>
+    `;
+
+    card.addEventListener('click', (e) => {
+      // Avoid re-selecting if already active
+      if (card.classList.contains('active')) return;
+      selectMicDevice(dev.id, dev.driver || 'auto', dev.name);
+    });
+
+    return card;
+  }
+
+  function updateActiveCardHighlights(activeId) {
+    currentActiveDeviceId = activeId;
+    document.querySelectorAll('.mic-card').forEach(c => {
+      c.classList.remove('switching');
+      const isAct = c.dataset.deviceId === activeId;
+      c.classList.toggle('active', isAct);
+      const btn = c.querySelector('.btn-select-mic');
+      if (btn) {
+        btn.className = `btn btn-sm btn-select-mic${isAct ? ' active-btn' : ''}`;
+        btn.textContent = isAct ? '✓ Connected' : 'Select Mic';
+      }
+      const statusWrap = c.querySelector('.mic-card-status');
+      if (statusWrap) {
+        const isDef = c.dataset.isDefault === 'true';
+        statusWrap.innerHTML = `
+          ${isAct ? '<span class="mic-badge active-status"><span class="device-dot"></span> ACTIVE</span>' : ''}
+          ${isDef && !isAct ? '<span class="mic-badge default">DEFAULT</span>' : ''}
+        `;
+      }
+    });
+
+    if (modalCurrentMicName && cachedDevices.length > 0) {
+      const matched = cachedDevices.find(d => d.id === activeId);
+      if (matched) modalCurrentMicName.textContent = matched.name;
+    }
+  }
+
+  function renderAllMicCards(devices, currentDevice) {
+    if (!Array.isArray(devices)) return;
+    cachedDevices = devices;
+    currentActiveDeviceId = currentDevice;
+
+    if (micsCountBadge) {
+      micsCountBadge.textContent = `${devices.length} DETECTED`;
+    }
+    if (modalCurrentMicName) {
+      const activeDev = devices.find(d => d.id === currentDevice);
+      modalCurrentMicName.textContent = activeDev ? activeDev.name : (currentDevice || 'Auto-detected');
+    }
+
+    // Render in main live grid
+    if (micsListGrid) {
+      micsListGrid.innerHTML = '';
+      if (devices.length === 0) {
+        micsListGrid.innerHTML = '<div class="mics-loading-placeholder">No microphones detected on host PC.</div>';
+      } else {
+        devices.forEach(dev => {
+          const isAct = dev.id === currentDevice;
+          micsListGrid.appendChild(createMicCardElement(dev, isAct));
+        });
+      }
+    }
+
+    // Render in modal container
+    if (modalMicsListContainer) {
+      modalMicsListContainer.innerHTML = '';
+      if (devices.length === 0) {
+        modalMicsListContainer.innerHTML = '<div class="mics-loading-placeholder">No microphones detected on host PC.</div>';
+      } else {
+        devices.forEach(dev => {
+          const isAct = dev.id === currentDevice;
+          modalMicsListContainer.appendChild(createMicCardElement(dev, isAct));
+        });
+      }
+    }
+
+    // Sync compact select dropdown
+    if (deviceSelect) {
+      deviceSelect.innerHTML = '';
+      devices.forEach(dev => {
+        const opt = document.createElement('option');
+        opt.value = dev.id;
+        opt.textContent = `${dev.name} [${dev.driver || 'alsa'}]`;
+        if (dev.id === currentDevice) {
+          opt.selected = true;
+        }
+        deviceSelect.appendChild(opt);
+      });
+    }
+  }
+
+  async function selectMicDevice(deviceId, driver = 'auto', deviceName = null) {
+    const token = getStoredToken();
+    const targetName = deviceName || deviceId;
+
+    // Visual feedback: mark cards for this device as switching
+    document.querySelectorAll(`.mic-card[data-device-id="${deviceId}"]`).forEach(c => {
+      c.classList.add('switching');
+      const btn = c.querySelector('.btn-select-mic');
+      if (btn) btn.textContent = 'Switching...';
+    });
+
+    try {
+      // 1. Send via WebSocket if connected and authenticated
+      if (ws && ws.readyState === WebSocket.OPEN && ws.isAuthenticated) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'switch_device',
+            device: deviceId,
+            driver: driver
+          }));
+        } catch {}
+      }
+
+      // 2. Send via REST API to ensure server captures switch
+      const res = await fetch('/api/capture/device', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ device: deviceId, driver: driver })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const finalName = data.deviceName || targetName;
+        currentActiveDeviceId = deviceId;
+        updateConnectedDevice({
+          device: deviceId,
+          name: finalName,
+          driver: data.driver || driver
+        });
+        updateActiveCardHighlights(deviceId);
+        showToast(`🎙️ Switched to microphone: ${finalName}`, 'success');
+      } else {
+        document.querySelectorAll(`.mic-card[data-device-id="${deviceId}"]`).forEach(c => {
+          c.classList.remove('switching');
+          const btn = c.querySelector('.btn-select-mic');
+          if (btn) btn.textContent = 'Select Mic';
+        });
+        showToast('Failed to switch microphone. Check device status.', 'error');
+      }
+    } catch (e) {
+      document.querySelectorAll(`.mic-card[data-device-id="${deviceId}"]`).forEach(c => {
+        c.classList.remove('switching');
+        const btn = c.querySelector('.btn-select-mic');
+        if (btn) btn.textContent = 'Select Mic';
+      });
+      showToast(`Error switching device: ${e.message}`, 'error');
+    }
+  }
+
+  async function rescanMicrophones(triggerBtn = null) {
+    if (triggerBtn) {
+      const icon = triggerBtn.querySelector('.btn-icon');
+      if (icon) icon.classList.add('spinning');
+      triggerBtn.disabled = true;
+    }
+    const token = getStoredToken();
+    try {
+      const res = await fetch('/api/devices/scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        renderAllMicCards(data.devices, data.currentDevice);
+        const activeName = data.currentDeviceName || data.currentDevice;
+        updateConnectedDevice({
+          device: data.currentDevice,
+          name: activeName,
+          driver: data.currentDriver
+        });
+        showToast(`🔍 Rescan complete. Found ${data.devices.length} microphone device(s).`, 'success');
+      } else {
+        await loadDevices();
+      }
+    } catch {
+      await loadDevices();
+    } finally {
+      if (triggerBtn) {
+        const icon = triggerBtn.querySelector('.btn-icon');
+        if (icon) icon.classList.remove('spinning');
+        triggerBtn.disabled = false;
+      }
+    }
+  }
 
   async function loadDevices() {
     const token = getStoredToken();
@@ -1029,19 +1310,8 @@
       const res = await fetch(`/api/devices?token=${encodeURIComponent(token)}`);
       if (res.ok) {
         const data = await res.json();
-        deviceSelect.innerHTML = '';
-        let matchedDev = null;
-        data.devices.forEach((dev) => {
-          const opt = document.createElement('option');
-          opt.value = dev.id;
-          opt.textContent = `${dev.name} [${dev.driver}]`;
-          if (dev.id === data.currentDevice) {
-            opt.selected = true;
-            matchedDev = dev;
-          }
-          deviceSelect.appendChild(opt);
-        });
-
+        renderAllMicCards(data.devices, data.currentDevice);
+        const matchedDev = data.devices.find(d => d.id === data.currentDevice);
         const activeName = data.currentDeviceName || matchedDev?.name || data.currentDevice;
         updateConnectedDevice({
           device: data.currentDevice,
@@ -1054,35 +1324,60 @@
     }
   }
 
-  btnSwitchDevice.addEventListener('click', async () => {
-    const selected = deviceSelect.value;
-    const token = getStoredToken();
-    try {
-      const res = await fetch('/api/capture/device', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ device: selected })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const devName = data.deviceName || selected;
-        updateConnectedDevice({
-          device: selected,
-          name: devName,
-          driver: data.driver || 'auto'
-        });
-        showToast(`🎙️ Switched to microphone: ${devName}`, 'success');
+  function openMicModal() {
+    if (micModal) {
+      micModal.classList.add('open');
+      if (cachedDevices.length === 0) {
         loadDevices();
       } else {
-        alert('Failed to switch device. Check authentication or device status.');
+        renderAllMicCards(cachedDevices, currentActiveDeviceId);
       }
-    } catch (e) {
-      alert('Error switching device: ' + e.message);
     }
-  });
+  }
+
+  function closeMicModal() {
+    if (micModal) {
+      micModal.classList.remove('open');
+    }
+  }
+
+  // Bind Microphone UI Event Listeners
+  if (headerDeviceBadge) {
+    headerDeviceBadge.addEventListener('click', openMicModal);
+  }
+  if (btnOpenMicModal) {
+    btnOpenMicModal.addEventListener('click', openMicModal);
+  }
+  if (btnCloseMicModal) {
+    btnCloseMicModal.addEventListener('click', closeMicModal);
+  }
+  if (btnCloseMicModalFooter) {
+    btnCloseMicModalFooter.addEventListener('click', closeMicModal);
+  }
+  if (micModal) {
+    micModal.addEventListener('click', (e) => {
+      if (e.target === micModal) closeMicModal();
+    });
+  }
+  if (btnRescanMics) {
+    btnRescanMics.addEventListener('click', () => rescanMicrophones(btnRescanMics));
+  }
+  if (btnModalRescanMics) {
+    btnModalRescanMics.addEventListener('click', () => rescanMicrophones(btnModalRescanMics));
+  }
+  if (btnToggleCompactSelect && deviceCompactRow) {
+    btnToggleCompactSelect.addEventListener('click', () => {
+      deviceCompactRow.classList.toggle('hidden');
+    });
+  }
+
+  if (btnSwitchDevice && deviceSelect) {
+    btnSwitchDevice.addEventListener('click', () => {
+      const selected = deviceSelect.value;
+      const matched = cachedDevices.find(d => d.id === selected);
+      selectMicDevice(selected, matched?.driver || 'auto', matched?.name);
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Status Check & Auth Handling

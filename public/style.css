@@ -168,6 +168,24 @@ body {
   transition: var(--transition);
 }
 
+.device-badge.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.device-badge.clickable:hover {
+  border-color: var(--accent-green);
+  background: rgba(0, 255, 136, 0.1);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+  transform: translateY(-1px);
+}
+
+.device-badge-arrow {
+  font-size: 0.68rem;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
 .device-badge.connected {
   color: var(--accent-green);
   border-color: rgba(0, 255, 136, 0.4);
@@ -674,9 +692,317 @@ canvas#visualizerCanvas {
   margin-bottom: 8px;
 }
 
+.device-compact-selector {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+}
+
+.device-compact-selector.hidden {
+  display: none !important;
+}
+
 .device-select-row {
   display: flex;
   gap: 8px;
+}
+
+/* --- Available Microphones Header & Grid --- */
+.mics-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.mics-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mics-title {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-main);
+}
+
+.mics-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mics-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* --- Microphone Card Component --- */
+.mic-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.mic-card:hover {
+  background: rgba(0, 255, 136, 0.03);
+  border-color: rgba(0, 255, 136, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.mic-card.active {
+  background: rgba(0, 255, 136, 0.06);
+  border-color: var(--accent-green);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.15);
+}
+
+.mic-card.switching {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.mic-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mic-card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mic-card-icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.mic-card.active .mic-card-icon {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: var(--accent-green);
+}
+
+.mic-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mic-card-title {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.mic-card.active .mic-card-title {
+  color: var(--accent-green);
+}
+
+.mic-card-sub {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.mic-card-desc {
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.mic-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mic-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mic-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.mic-badge.driver {
+  color: var(--accent-cyan);
+  border-color: rgba(0, 212, 255, 0.25);
+  background: rgba(0, 212, 255, 0.05);
+}
+
+.mic-badge.default {
+  color: var(--accent-amber);
+  border-color: rgba(255, 183, 3, 0.3);
+  background: rgba(255, 183, 3, 0.06);
+}
+
+.mic-badge.active-status {
+  color: var(--accent-green);
+  border-color: rgba(0, 255, 136, 0.4);
+  background: rgba(0, 255, 136, 0.1);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-select-mic {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  background: rgba(0, 255, 136, 0.08);
+  color: var(--accent-green);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-select-mic:hover {
+  background: var(--accent-green);
+  color: #000;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.btn-select-mic.active-btn {
+  background: rgba(0, 255, 136, 0.18);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  cursor: default;
+  pointer-events: none;
+}
+
+.mics-loading-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+}
+
+.spinning {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Microphone Modal Specifics --- */
+.modal.modal-lg {
+  max-width: 680px;
+}
+
+.modal-mic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.modal-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 0 !important;
+  flex: 1;
+}
+
+.mics-modal-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+.mics-modal-container::-webkit-scrollbar {
+  width: 6px;
+}
+.mics-modal-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+.mics-modal-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.modal-footer-info {
+  margin-right: auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.modal-footer-info .text-highlight {
+  color: var(--accent-green);
+  font-weight: 700;
 }
 
 .form-select, .form-input {

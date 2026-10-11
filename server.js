@@ -187,8 +187,12 @@ app.get('/api/devices', (req, res) => {
   }
 
   try {
-    const devices = scanAudioDevices();
+    const rawDevices = scanAudioDevices();
     const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
+    const devices = rawDevices.map(d => ({
+      ...d,
+      isActive: d.id === audioCapture.device
+    }));
     res.json({
       devices,
       currentDevice: audioCapture.device,
@@ -197,6 +201,34 @@ app.get('/api/devices', (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to scan devices', message: err.message });
+  }
+});
+
+// Rescan Devices endpoint (protected if auth enabled)
+app.post('/api/devices/scan', authMiddleware, (req, res) => {
+  try {
+    const rawDevices = scanAudioDevices();
+    const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
+    const devices = rawDevices.map(d => ({
+      ...d,
+      isActive: d.id === audioCapture.device
+    }));
+    // Broadcast fresh device list to all connected clients
+    broadcastControlMessage({
+      type: 'devices_list',
+      devices,
+      currentDevice: audioCapture.device,
+      currentDeviceName,
+      currentDriver: audioCapture.driver
+    });
+    res.json({
+      devices,
+      currentDevice: audioCapture.device,
+      currentDeviceName,
+      currentDriver: audioCapture.driver
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rescan devices', message: err.message });
   }
 });
 
@@ -210,10 +242,22 @@ app.post('/api/capture/device', authMiddleware, (req, res) => {
   const devices = scanAudioDevices();
   const matched = devices.find(d => d.id === device);
   const deviceName = matched ? matched.name : getDeviceDisplayName(device);
+  const finalDriver = driver || (matched?.driver || 'auto');
 
   console.log(`[Server] Switching audio device to: ${deviceName} (${device})`);
-  audioCapture.restart({ device, driver: driver || (matched?.driver || 'auto'), name: deviceName });
-  res.json({ success: true, device, deviceName, driver: driver || 'auto' });
+  audioCapture.restart({ device, driver: finalDriver, name: deviceName });
+
+  const payload = {
+    device,
+    deviceName,
+    name: deviceName,
+    driver: finalDriver
+  };
+
+  broadcastControlMessage({ type: 'device_changed', ...payload });
+  broadcastControlMessage({ type: 'device_connected', ...payload });
+
+  res.json({ success: true, ...payload });
 });
 
 // EasyEffects DSP Presets list endpoint
@@ -571,6 +615,7 @@ function onClientAuthenticated(ws) {
     name: audioCapture.deviceName || getDeviceDisplayName(audioCapture.device),
     deviceName: audioCapture.deviceName || getDeviceDisplayName(audioCapture.device),
     driver: audioCapture.driver,
+    devices: scanAudioDevices().map(d => ({ ...d, isActive: d.id === audioCapture.device })),
     dspPreset: audioCapture.dspPreset,
     activeFilterString: audioCapture.activeFilterString,
     dspPresets: getDspPresetsList(audioCapture.dspPreset),
@@ -594,6 +639,53 @@ function onClientAuthenticated(ws) {
           clientTime: data.clientTime,
           serverTime: Date.now()
         }));
+      } else if (data.type === 'get_devices') {
+        const rawDevices = scanAudioDevices();
+        const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
+        const devices = rawDevices.map(d => ({
+          ...d,
+          isActive: d.id === audioCapture.device
+        }));
+        ws.send(JSON.stringify({
+          type: 'devices_list',
+          devices,
+          currentDevice: audioCapture.device,
+          currentDeviceName,
+          currentDriver: audioCapture.driver
+        }));
+      } else if (data.type === 'switch_device' || data.type === 'set_device') {
+        if (data.device) {
+          const devices = scanAudioDevices();
+          const matched = devices.find(d => d.id === data.device);
+          const deviceName = matched ? matched.name : getDeviceDisplayName(data.device);
+          const finalDriver = data.driver || (matched?.driver || 'auto');
+
+          console.log(`[WebSocket] Switching audio device to: ${deviceName} (${data.device})`);
+          audioCapture.restart({ device: data.device, driver: finalDriver, name: deviceName });
+
+          const payload = {
+            device: data.device,
+            deviceName,
+            name: deviceName,
+            driver: finalDriver
+          };
+          broadcastControlMessage({ type: 'device_changed', ...payload });
+          broadcastControlMessage({ type: 'device_connected', ...payload });
+        }
+      } else if (data.type === 'scan_devices') {
+        const rawDevices = scanAudioDevices();
+        const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
+        const devices = rawDevices.map(d => ({
+          ...d,
+          isActive: d.id === audioCapture.device
+        }));
+        broadcastControlMessage({
+          type: 'devices_list',
+          devices,
+          currentDevice: audioCapture.device,
+          currentDeviceName,
+          currentDriver: audioCapture.driver
+        });
       } else if (data.type === 'set_dsp_preset') {
         if (data.preset) {
           audioCapture.setDspPreset(data.preset, data.options || {});

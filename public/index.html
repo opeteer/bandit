@@ -25,11 +25,15 @@
       </div>
 
       <div class="header-badges">
-        <div class="badge device-badge" id="headerDeviceBadge" title="Connected Host Microphone">
+        <div class="badge device-badge clickable" id="headerDeviceBadge" title="Click to view and choose available microphones">
           <span class="device-dot" id="headerDeviceDot"></span>
           <span class="device-icon">🎙️</span>
           <span id="headerDeviceName">MIC: DETECTING...</span>
+          <span class="device-badge-arrow">▾</span>
         </div>
+        <button id="btnOpenMicModal" class="btn btn-sm btn-outline" title="Open Available Microphones Manager">
+          <span class="btn-icon">🎙️</span> Choose Mic
+        </button>
         <div class="badge status-badge" id="connectionBadge">
           <span class="status-dot"></span>
           <span id="connectionText">DISCONNECTED</span>
@@ -275,7 +279,7 @@
               </div>
             </div>
 
-            <!-- Host Device Selector -->
+            <!-- Host Device Selector & Microphones Rack -->
             <div class="device-selector-group">
               <div class="active-mic-banner" id="activeMicBanner">
                 <div class="active-mic-icon-wrap">
@@ -291,13 +295,41 @@
                 </div>
               </div>
 
-              <label for="deviceSelect">Switch Host Capture Device:</label>
-              <div class="device-select-row">
-                <select id="deviceSelect" class="form-select">
-                  <option value="default">Loading devices...</option>
-                </select>
-                <button id="btnSwitchDevice" class="btn btn-sm btn-outline">Apply</button>
+              <!-- Available Microphones Header & Action Bar -->
+              <div class="mics-header-row">
+                <div class="mics-title-wrap">
+                  <span class="mics-title">AVAILABLE MICROPHONES</span>
+                  <span class="badge badge-info" id="micsCountBadge">0 DETECTED</span>
+                </div>
+                <div class="mics-actions">
+                  <button class="btn btn-sm btn-outline" id="btnRescanMics" title="Rescan host audio hardware for plugged-in microphones">
+                    <span class="btn-icon">🔄</span> Scan Mics
+                  </button>
+                  <button class="btn btn-sm btn-outline" id="btnToggleCompactSelect" title="Toggle compact dropdown view">
+                    <span class="btn-icon">📋</span> Quick Select
+                  </button>
+                </div>
               </div>
+
+              <!-- Interactive Available Microphones Cards List -->
+              <div class="mics-list-grid" id="micsListGrid">
+                <!-- Dynamically populated with mic cards -->
+                <div class="mics-loading-placeholder">
+                  <span class="spinner-icon">⏳</span> Loading available microphones...
+                </div>
+              </div>
+
+              <!-- Collapsible Compact Dropdown Row -->
+              <div class="device-compact-selector hidden" id="deviceCompactRow">
+                <label for="deviceSelect">Quick Switch Capture Device:</label>
+                <div class="device-select-row">
+                  <select id="deviceSelect" class="form-select">
+                    <option value="default">Loading devices...</option>
+                  </select>
+                  <button id="btnSwitchDevice" class="btn btn-sm btn-outline">Apply</button>
+                </div>
+              </div>
+
               <small id="deviceNote" class="control-hint">Current: Auto-detected default</small>
             </div>
           </div>
@@ -654,6 +686,43 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="btnCancelWhisperModal">Cancel</button>
         <button class="btn btn-primary" id="btnSaveWhisperConfig">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Microphone Device Selection Modal -->
+  <div class="modal-backdrop" id="micModal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-icon">🎙️</span>
+          <h3>AVAILABLE MICROPHONES</h3>
+        </div>
+        <button class="modal-close" id="btnCloseMicModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-mic-header">
+          <p class="modal-desc">Browse, inspect, and choose between host audio input devices for low-latency surveillance capture.</p>
+          <div class="modal-mic-actions">
+            <button class="btn btn-sm btn-outline" id="btnModalRescanMics">
+              <span class="btn-icon">🔄</span> Rescan Hardware
+            </button>
+          </div>
+        </div>
+
+        <div class="mics-modal-container" id="modalMicsListContainer">
+          <!-- Populated dynamically with mic cards -->
+          <div class="mics-loading-placeholder">
+            <span class="spinner-icon">⏳</span> Scanning audio input devices...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-info" id="modalMicFooterInfo">
+          <span class="text-muted">Active: </span>
+          <span class="text-highlight" id="modalCurrentMicName">Detecting...</span>
+        </div>
+        <button class="btn btn-secondary" id="btnCloseMicModalFooter">Close</button>
       </div>
     </div>
   </div>

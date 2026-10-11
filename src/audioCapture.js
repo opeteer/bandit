@@ -524,11 +524,15 @@ class AudioCapture extends EventEmitter {
 
     if (newOptions.device) {
       this.device = newOptions.device;
+      this.currentDevice = newOptions.device;
       this.isFallingBack = false;
       this.isSearching = false;
       this.attemptedHwFallback = false;
     }
-    if (newOptions.driver) this.driver = newOptions.driver;
+    if (newOptions.driver) {
+      this.driver = newOptions.driver;
+      this.currentDriver = newOptions.driver;
+    }
     if (newOptions.name || newOptions.deviceName) {
       this.deviceName = newOptions.name || newOptions.deviceName;
     } else if (newOptions.device) {
@@ -600,10 +604,10 @@ class AudioCapture extends EventEmitter {
     const bufferedSecs = (this.recentAudioBuffer.length / (this.sampleRate * this.channels * this.bytesPerSample));
     return {
       isRunning: this.isRunning,
-      device: this.currentDevice || this.device,
-      name: this.deviceName || getDeviceDisplayName(this.currentDevice || this.device),
-      deviceName: this.deviceName || getDeviceDisplayName(this.currentDevice || this.device),
-      driver: this.currentDriver || this.driver,
+      device: this.device || this.currentDevice,
+      name: this.deviceName || getDeviceDisplayName(this.device || this.currentDevice),
+      deviceName: this.deviceName || getDeviceDisplayName(this.device || this.currentDevice),
+      driver: this.driver || this.currentDriver,
       sampleRate: this.sampleRate,
       channels: this.channels,
       chunkMs: this.chunkMs,
