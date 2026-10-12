@@ -474,7 +474,7 @@
                   <h3>Analyze Saved Recording Segment</h3>
                 </div>
                 <p class="action-card-desc">
-                  Select any hourly audio segment from the 48-Hour Vault. Files are automatically optimized with FFmpeg before Whisper processing.
+                  Select any hourly audio segment from the 48-Hour Vault. Files are automatically analyzed with FFmpeg or Whisper.
                 </p>
                 <div class="vault-select-row">
                   <label for="analysisVaultSelect" class="sr-only">Select Vault Recording to Analyze</label>
@@ -482,6 +482,23 @@
                     <option value="">Select a vault recording file...</option>
                   </select>
                   <button class="btn btn-secondary" id="btnAnalyzeVaultFile">Analyze File</button>
+                </div>
+              </div>
+
+              <div class="source-action-card">
+                <div class="action-card-header">
+                  <span class="action-badge">BROWSER NATIVE STT</span>
+                  <h3>Live Real-Time Voice Recognition</h3>
+                </div>
+                <p class="action-card-desc">
+                  Transcribes real spoken words live from your microphone using the browser's native Web Speech engine. Readily available with 0 API keys.
+                </p>
+                <div class="action-card-controls">
+                  <button class="btn btn-secondary" id="btnToggleWebSpeech">
+                    <span>🎙️</span>
+                    <span id="webSpeechBtnText">Start Real-Time Dictation</span>
+                  </button>
+                  <span class="buffer-info-text" id="webSpeechStatusText">Native STT: Ready</span>
                 </div>
               </div>
             </div>
@@ -536,22 +553,22 @@
               <div class="analysis-metrics-grid">
                 <div class="metric-card">
                   <span class="metric-label">DETECTED LANGUAGE</span>
-                  <span class="metric-value highlight" id="resLanguage">English</span>
-                  <span class="metric-sub" id="resLangProb">99% confidence</span>
+                  <span class="metric-value highlight" id="resLanguage">--</span>
+                  <span class="metric-sub" id="resLangProb">--</span>
                 </div>
                 <div class="metric-card">
                   <span class="metric-label">SPEECH ACTIVITY RATIO</span>
-                  <span class="metric-value" id="resSpeechRatio">0%</span>
-                  <span class="metric-sub" id="resSpeechDur">0s speech / 0s silence</span>
+                  <span class="metric-value" id="resSpeechRatio">--%</span>
+                  <span class="metric-sub" id="resSpeechDur">--s speech / --s silence</span>
                 </div>
                 <div class="metric-card">
                   <span class="metric-label">TOTAL WORDS & RATE</span>
-                  <span class="metric-value" id="resWordCount">0 words</span>
-                  <span class="metric-sub" id="resWpm">0 WPM</span>
+                  <span class="metric-value" id="resWordCount">-- words</span>
+                  <span class="metric-sub" id="resWpm">-- WPM</span>
                 </div>
                 <div class="metric-card">
                   <span class="metric-label">SPEAKERS DETECTED</span>
-                  <span class="metric-value highlight" id="resSpeakerCount">0</span>
+                  <span class="metric-value highlight" id="resSpeakerCount">--</span>
                   <span class="metric-sub" id="resSpeakerThreshold">≥ 0.8s threshold</span>
                 </div>
                 <div class="metric-card alert-metric">
@@ -581,7 +598,7 @@
               <div class="analysis-player-box" id="analysisPlayerBox">
                 <div class="player-headline">
                   <span class="player-badge">SYNCHRONIZED AUDIO PLAYBACK:</span>
-                  <span class="active-item-name" id="analysisActiveItemName">live_mic_snapshot.mp3</span>
+                  <span class="active-item-name" id="analysisActiveItemName">No audio loaded</span>
                 </div>
                 <audio id="analysisAudioPlayer" controls preload="metadata" class="analysis-audio-element"></audio>
                 <div class="player-sync-hints">
