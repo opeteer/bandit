@@ -727,10 +727,29 @@
     </div>
   </div>
 
+  <!-- Delete Confirmation Modal (REC-QA-02) -->
+  <div class="modal-backdrop" id="deleteConfirmModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="deleteModalTitle">CONFIRM FILE DELETION</h3>
+        <button class="modal-close" id="btnCloseDeleteModal" aria-label="Close file deletion dialog">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Permanently remove the following recording segment from the 48-hour vault?</p>
+        <p class="rec-delete-target"><strong id="deleteTargetFilename">--</strong></p>
+        <small class="control-hint text-warning">This action cannot be undone. The archived audio file will be purged from disk.</small>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelDelete">Cancel</button>
+        <button class="btn btn-danger" id="btnConfirmDelete">Delete Recording</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Accessible Live Region for Telemetry and Status Feedback -->
   <div id="liveAnnouncer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <div id="toastContainer" class="toast-container"></div>
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
 </body>
