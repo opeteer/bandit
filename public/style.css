@@ -476,6 +476,18 @@ canvas#visualizerCanvas {
   color: var(--text-main);
 }
 
+.btn-danger {
+  background: var(--accent-red);
+  color: #fff;
+  font-weight: 700;
+  border: 1px solid rgba(255, 51, 102, 0.6);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ff4d79;
+  box-shadow: 0 0 16px rgba(255, 51, 102, 0.4);
+}
+
 .btn-sm {
   padding: 6px 10px;
   font-size: 0.72rem;
@@ -1115,6 +1127,22 @@ canvas#visualizerCanvas {
   font-size: 0.75rem;
   margin-top: 8px;
   min-height: 18px;
+}
+
+.rec-delete-target {
+  font-family: var(--font-mono);
+  color: var(--accent-red);
+  font-size: 0.95rem;
+  padding: 10px 14px;
+  background: rgba(255, 51, 102, 0.08);
+  border: 1px solid rgba(255, 51, 102, 0.25);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  word-break: break-all;
+}
+
+.text-warning {
+  color: var(--accent-amber);
 }
 
 .modal-footer {

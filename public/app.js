@@ -121,6 +121,10 @@
     span.textContent = message;
     toast.appendChild(span);
     toastContainer.appendChild(toast);
+
+    // Echo toast notification to screen-reader live region (REC-QA-03)
+    announceLiveMessage(message);
+
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(10px)';
@@ -262,6 +266,11 @@
   const vaultAudioPlayer = document.getElementById('vaultAudioPlayer');
   const vaultPlayerTitle = document.getElementById('vaultPlayerTitle');
   const recordingsTableBody = document.getElementById('recordingsTableBody');
+  const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+  const btnCloseDeleteModal = document.getElementById('btnCloseDeleteModal');
+  const deleteTargetFilename = document.getElementById('deleteTargetFilename');
+  const btnCancelDelete = document.getElementById('btnCancelDelete');
+  const btnConfirmDelete = document.getElementById('btnConfirmDelete');
 
   // Top Navigation & Tab Elements
   const navTabs = document.querySelectorAll('.nav-tab');
@@ -459,6 +468,12 @@
     const freqBuffer = new Uint8Array(analyserNode ? analyserNode.frequencyBinCount : 1024);
 
     function render() {
+      // Pause visualizer render loop if Live tab is not active to save CPU/battery (REC-QA-04)
+      if (viewLive && !viewLive.classList.contains('active')) {
+        animationFrameId = null;
+        return;
+      }
+
       animationFrameId = requestAnimationFrame(render);
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
@@ -1630,7 +1645,6 @@
         ? '<span class="tag-active-rec">● RECORDING</span>'
         : '<span class="tag-saved">SAVED</span>';
 
-      const downloadUrl = `${rec.downloadUrl}?token=${encodeURIComponent(token)}&download=1`;
       const dateFormatted = new Date(rec.modifiedAt || rec.createdAt).toLocaleString();
 
       rowsHtml += `
@@ -1644,7 +1658,7 @@
             <div class="rec-actions">
               <button class="btn-rec btn-play-rec" data-file="${escapeHtml(rec.filename)}">▶ Play</button>
               <button class="btn-rec btn-analyze-rec" data-file="${escapeHtml(rec.filename)}">🧠 Analyze</button>
-              <a class="btn-rec" href="${downloadUrl}" download="${escapeHtml(rec.filename)}">⬇ Save</a>
+              <button class="btn-rec btn-save-rec" data-file="${escapeHtml(rec.filename)}">⬇ Save</button>
               ${!isCurrent ? `<button class="btn-rec btn-del-rec" data-file="${escapeHtml(rec.filename)}">🗑 Del</button>` : ''}
             </div>
           </td>
@@ -1680,6 +1694,13 @@
           if (analysisVaultSelect) analysisVaultSelect.value = file;
           triggerVaultAnalysis(file);
         }
+      });
+    });
+
+    recordingsTableBody.querySelectorAll('.btn-save-rec').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const file = btn.getAttribute('data-file');
+        if (file) await downloadRecordingFile(file);
       });
     });
 
@@ -1731,8 +1752,56 @@
     }
   }
 
-  async function deleteRecording(filename) {
-    if (!confirm(`Delete "${filename}" from 48-hour recording vault?`)) return;
+  async function downloadRecordingFile(filename) {
+    const streamUrl = await getMediaStreamUrl(filename);
+    const downloadUrl = `${streamUrl}${streamUrl.includes('?') ? '&' : '?'}download=1`;
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  // In-App Delete Confirmation Modal Management (REC-QA-02)
+  let pendingDeleteFilename = null;
+
+  function openDeleteModal(filename) {
+    if (!deleteConfirmModal) return;
+    pendingDeleteFilename = filename;
+    if (deleteTargetFilename) deleteTargetFilename.textContent = filename;
+    deleteConfirmModal.classList.add('open');
+    if (btnConfirmDelete) btnConfirmDelete.focus();
+  }
+
+  function closeDeleteModal() {
+    if (!deleteConfirmModal) return;
+    deleteConfirmModal.classList.remove('open');
+    pendingDeleteFilename = null;
+  }
+
+  if (btnCloseDeleteModal) btnCloseDeleteModal.addEventListener('click', closeDeleteModal);
+  if (btnCancelDelete) btnCancelDelete.addEventListener('click', closeDeleteModal);
+  if (deleteConfirmModal) {
+    deleteConfirmModal.addEventListener('click', (e) => {
+      if (e.target === deleteConfirmModal) closeDeleteModal();
+    });
+  }
+  if (btnConfirmDelete) {
+    btnConfirmDelete.addEventListener('click', async () => {
+      if (pendingDeleteFilename) {
+        const fileToDelete = pendingDeleteFilename;
+        closeDeleteModal();
+        await executeDeleteRecording(fileToDelete);
+      }
+    });
+  }
+
+  function deleteRecording(filename) {
+    openDeleteModal(filename);
+  }
+
+  async function executeDeleteRecording(filename) {
     const token = getStoredToken();
     try {
       const res = await fetch(`/api/recordings/${encodeURIComponent(filename)}`, {
@@ -1742,7 +1811,7 @@
         }
       });
       if (res.ok) {
-        showToast('Recording deleted successfully', 'success');
+        showToast(`Recording "${filename}" deleted successfully`, 'success');
         loadRecordings();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1821,7 +1890,18 @@
     });
 
     if (tabId === 'live') {
-      requestAnimationFrame(() => resizeCanvas());
+      requestAnimationFrame(() => {
+        resizeCanvas();
+        if (isPlaying && !animationFrameId) {
+          startVisualizerLoop();
+        }
+      });
+    } else {
+      // Pause visualizer render loop when leaving Live tab (REC-QA-04)
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
     }
 
     if (tabId === 'analysis') {
@@ -2375,16 +2455,17 @@
     });
   }
 
-  [authModal, whisperModal, micModal].forEach(m => {
+  [authModal, whisperModal, micModal, deleteConfirmModal].forEach(m => {
     if (m) trapFocus(m);
   });
 
-  // Global Escape Key Dismissal for All Modals (UX-04)
+  // Global Escape Key Dismissal for All Modals (UX-04 / REC-QA-02)
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (authModal?.classList.contains('open')) closeAuthModal();
       if (micModal?.classList.contains('open')) closeMicModal();
       if (whisperModal?.classList.contains('open')) whisperModal.classList.remove('open');
+      if (deleteConfirmModal?.classList.contains('open')) closeDeleteModal();
     }
   });
 
