@@ -1102,7 +1102,7 @@
   // ---------------------------------------------------------------------------
 
   function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str).replace(/[&<>"']/g, m => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[m]));
@@ -1254,16 +1254,23 @@
     try {
       // 1. Send via WebSocket if connected and authenticated
       if (ws && ws.readyState === WebSocket.OPEN && ws.isAuthenticated) {
-        try {
-          ws.send(JSON.stringify({
-            type: 'switch_device',
-            device: deviceId,
-            driver: driver
-          }));
-        } catch {}
+        ws.send(JSON.stringify({
+          type: 'switch_device',
+          device: deviceId,
+          driver: driver
+        }));
+        currentActiveDeviceId = deviceId;
+        updateConnectedDevice({
+          device: deviceId,
+          name: targetName,
+          driver: driver
+        });
+        updateActiveCardHighlights(deviceId);
+        showToast(`🎙️ Switched to microphone: ${targetName}`, 'success');
+        return;
       }
 
-      // 2. Send via REST API to ensure server captures switch
+      // 2. Fallback to REST API if WebSocket is not connected or authenticated
       const res = await fetch('/api/capture/device', {
         method: 'POST',
         headers: {
@@ -1473,8 +1480,37 @@
     });
   }
 
-  btnSaveToken.addEventListener('click', () => {
+  btnSaveToken.addEventListener('click', async () => {
     const token = tokenInput.value.trim();
+    if (token) {
+      btnSaveToken.disabled = true;
+      btnSaveToken.textContent = 'Verifying...';
+      try {
+        const res = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          authErrorMessage.textContent = data.error || 'Too many attempts. Try again later.';
+          btnSaveToken.disabled = false;
+          btnSaveToken.textContent = 'Connect';
+          return;
+        }
+        if (!data.valid && data.authRequired) {
+          authErrorMessage.textContent = 'Invalid token. Please check your credentials.';
+          btnSaveToken.disabled = false;
+          btnSaveToken.textContent = 'Connect';
+          return;
+        }
+      } catch {
+        // network/offline fallback
+      } finally {
+        btnSaveToken.disabled = false;
+        btnSaveToken.textContent = 'Connect';
+      }
+    }
     setStoredToken(token);
     closeAuthModal();
     checkServerStatus();
@@ -1656,10 +1692,10 @@
           <td>${dateFormatted}</td>
           <td style="text-align: right;">
             <div class="rec-actions">
-              <button class="btn-rec btn-play-rec" data-file="${escapeHtml(rec.filename)}">▶ Play</button>
-              <button class="btn-rec btn-analyze-rec" data-file="${escapeHtml(rec.filename)}">🧠 Analyze</button>
-              <button class="btn-rec btn-save-rec" data-file="${escapeHtml(rec.filename)}">⬇ Save</button>
-              ${!isCurrent ? `<button class="btn-rec btn-del-rec" data-file="${escapeHtml(rec.filename)}">🗑 Del</button>` : ''}
+              <button class="btn-rec btn-play-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Play recording ${escapeHtml(rec.filename)}">▶ Play</button>
+              <button class="btn-rec btn-analyze-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Analyze recording ${escapeHtml(rec.filename)}">🧠 Analyze</button>
+              <button class="btn-rec btn-save-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Save recording ${escapeHtml(rec.filename)}">⬇ Save</button>
+              ${!isCurrent ? `<button class="btn-rec btn-del-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Delete recording ${escapeHtml(rec.filename)}">🗑 Del</button>` : ''}
             </div>
           </td>
         </tr>
@@ -1710,11 +1746,6 @@
         if (file) deleteRecording(file);
       });
     });
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   async function getMediaStreamUrl(filename) {
@@ -2299,19 +2330,38 @@
     });
   }
 
-  function downloadExport(format) {
+  async function downloadExport(format) {
     if (!currentAnalysisReport?.id) {
       showToast('No active analysis to export.', 'warning');
       return;
     }
     const token = getStoredToken();
-    const url = `/api/analysis/jobs/${encodeURIComponent(currentAnalysisReport.id)}/export/${format}?token=${encodeURIComponent(token)}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentAnalysisReport.id}.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const filename = `${currentAnalysisReport.id}.${format}`;
+    try {
+      const res = await fetch(`/api/analysis/jobs/${encodeURIComponent(currentAnalysisReport.id)}/export/${format}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        showToast(`Downloaded ${filename}`, 'success');
+        return;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to export file', 'error');
+        return;
+      }
+    } catch (e) {
+      console.warn('[Export] Download error:', e);
+      showToast('Download error: ' + e.message, 'error');
+    }
   }
 
   if (btnExportSrt) btnExportSrt.addEventListener('click', () => downloadExport('srt'));

@@ -6,10 +6,20 @@
 const { execSync } = require('child_process');
 const os = require('os');
 
+let cachedDevices = null;
+let lastScanTime = 0;
+const CACHE_TTL_MS = 5000;
+
 /**
  * Scan for audio input devices based on current OS.
+ * Uses a 5-second TTL cache to prevent repeated synchronous child process execution from blocking the event loop.
  */
-function scanAudioDevices() {
+function scanAudioDevices(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && cachedDevices && (now - lastScanTime) < CACHE_TTL_MS) {
+    return cachedDevices.map(d => ({ ...d }));
+  }
+
   const platform = os.platform();
   const devices = [];
 
@@ -193,6 +203,8 @@ function scanAudioDevices() {
     }
   }
 
+  cachedDevices = devices;
+  lastScanTime = now;
   return devices;
 }
 

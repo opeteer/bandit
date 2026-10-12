@@ -84,7 +84,7 @@
           </div>
 
         <div class="canvas-wrapper">
-          <canvas id="visualizerCanvas" width="960" height="260"></canvas>
+          <canvas id="visualizerCanvas" width="960" height="260" role="img" aria-label="Real-time live audio frequency and waveform visualizer"></canvas>
           <div class="canvas-overlay" id="canvasOverlay">
             <button class="btn btn-primary btn-large" id="btnStartListening">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
@@ -477,7 +477,8 @@
                   Select any hourly audio segment from the 48-Hour Vault. Files are automatically optimized with FFmpeg before Whisper processing.
                 </p>
                 <div class="vault-select-row">
-                  <select id="analysisVaultSelect" class="form-select">
+                  <label for="analysisVaultSelect" class="sr-only">Select Vault Recording to Analyze</label>
+                  <select id="analysisVaultSelect" class="form-select" aria-label="Select a vault recording file">
                     <option value="">Select a vault recording file...</option>
                   </select>
                   <button class="btn btn-secondary" id="btnAnalyzeVaultFile">Analyze File</button>
@@ -596,7 +597,8 @@
                     <span class="badge badge-info" id="transcriptItemBadge">0 Segments</span>
                   </div>
                   <div class="transcript-search-group">
-                    <input type="text" id="transcriptSearchInput" class="form-input form-input-sm" placeholder="🔍 Search spoken words or keywords...">
+                    <label for="transcriptSearchInput" class="sr-only">Search spoken words or keywords in transcript</label>
+                    <input type="text" id="transcriptSearchInput" class="form-input form-input-sm" placeholder="🔍 Search spoken words or keywords..." aria-label="Search spoken words or keywords in transcript">
                     <button class="btn btn-sm btn-outline" id="btnClearTranscriptSearch">Clear</button>
                   </div>
                 </div>

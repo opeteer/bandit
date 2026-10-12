@@ -557,9 +557,10 @@ class WhisperAnalyzer {
     let srt = '';
     segments.forEach((seg, index) => {
       const spk = seg.speaker ? `[${seg.speaker}] ` : '';
+      const textContent = (seg.text || '').trim();
       srt += `${index + 1}\n`;
       srt += `${this.formatSrtTimestamp(seg.start)} --> ${this.formatSrtTimestamp(seg.end)}\n`;
-      srt += `${spk}${seg.text.trim()}\n\n`;
+      srt += `${spk}${textContent}\n\n`;
     });
     return srt;
   }
@@ -573,9 +574,10 @@ class WhisperAnalyzer {
     segments.forEach((seg, index) => {
       const spk = seg.speaker ? `<v ${seg.speaker}>` : '';
       const closeSpk = seg.speaker ? '</v>' : '';
+      const textContent = (seg.text || '').trim();
       vtt += `${index + 1}\n`;
       vtt += `${this.formatVttTimestamp(seg.start)} --> ${this.formatVttTimestamp(seg.end)}\n`;
-      vtt += `${spk}${seg.text.trim()}${closeSpk}\n\n`;
+      vtt += `${spk}${textContent}${closeSpk}\n\n`;
     });
     return vtt;
   }
@@ -595,7 +597,8 @@ class WhisperAnalyzer {
     segments.forEach(seg => {
       const timeStr = `[${this.formatSrtTimestamp(seg.start).slice(3, 8)}]`;
       const spk = seg.speaker ? `[${seg.speaker}] ` : '';
-      txt += `${timeStr} ${spk}${seg.text.trim()}\n`;
+      const textContent = (seg.text || '').trim();
+      txt += `${timeStr} ${spk}${textContent}\n`;
     });
     return txt;
   }

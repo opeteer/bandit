@@ -26,10 +26,14 @@ function isValidToken(providedToken, expectedToken = process.env.AUTH_TOKEN) {
     // Authentication disabled
     return true;
   }
-  if (!providedToken) {
+  if (!providedToken || typeof providedToken !== 'string') {
     return false;
   }
-  return safeCompare(providedToken.trim(), secret);
+  const cleanToken = providedToken.trim();
+  if (!cleanToken) {
+    return false;
+  }
+  return safeCompare(cleanToken, secret);
 }
 
 /**
@@ -67,7 +71,12 @@ function extractToken(req) {
     const parts = protocols.split(',').map(s => s.trim());
     for (const part of parts) {
       if (part.startsWith('token.')) {
-        return part.slice(6);
+        const rawToken = part.slice(6);
+        try {
+          return decodeURIComponent(rawToken).trim();
+        } catch {
+          return rawToken.trim();
+        }
       }
     }
   }

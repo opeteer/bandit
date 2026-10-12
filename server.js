@@ -191,7 +191,7 @@ app.get('/api/status', (req, res) => {
 // In-memory sliding rate limiter for auth attempts (SEC-09)
 const authFailedAttempts = new Map();
 function checkAuthRateLimit(req) {
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const ip = req?.ip || req?.socket?.remoteAddress || 'unknown';
   const now = Date.now();
   const record = authFailedAttempts.get(ip);
   if (record && record.resetAt > now) {
@@ -204,7 +204,7 @@ function checkAuthRateLimit(req) {
   return true;
 }
 function recordAuthFailure(req) {
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const ip = req?.ip || req?.socket?.remoteAddress || 'unknown';
   const now = Date.now();
   const record = authFailedAttempts.get(ip);
   if (record && record.resetAt > now) {
@@ -214,9 +214,20 @@ function recordAuthFailure(req) {
   }
 }
 function clearAuthFailure(req) {
-  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const ip = req?.ip || req?.socket?.remoteAddress || 'unknown';
   authFailedAttempts.delete(ip);
 }
+
+// Periodic cleanup of expired rate limiter records to prevent unbounded memory growth (DEFECT-08)
+const authRateLimitCleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of authFailedAttempts) {
+    if (record.resetAt <= now) {
+      authFailedAttempts.delete(ip);
+    }
+  }
+}, 10 * 60 * 1000);
+authRateLimitCleanupInterval.unref();
 
 // Auth Verification endpoint
 app.post('/api/auth/verify', (req, res) => {
@@ -224,7 +235,7 @@ app.post('/api/auth/verify', (req, res) => {
     return res.status(429).json({ error: 'Too many failed authentication attempts. Please try again later.' });
   }
 
-  const token = req.body?.token || '';
+  const token = typeof req.body?.token === 'string' ? req.body.token : '';
   if (!AUTH_TOKEN) {
     return res.json({ valid: true, authRequired: false });
   }
@@ -276,7 +287,7 @@ app.get('/api/devices', (req, res) => {
 // Rescan Devices endpoint (protected if auth enabled)
 app.post('/api/devices/scan', authMiddleware, (req, res) => {
   try {
-    const rawDevices = scanAudioDevices();
+    const rawDevices = scanAudioDevices(true);
     const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
     const devices = rawDevices.map(d => ({
       ...d,
@@ -424,11 +435,29 @@ app.get('/api/recordings/:filename', recordingAuthMiddleware, (req, res) => {
 
   const range = req.headers.range;
   if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const rangeMatch = String(range).trim().match(/^bytes=(\d*)-(\d*)$/);
+    if (!rangeMatch) {
+      res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
+      return;
+    }
 
-    if (isNaN(start) || start >= fileSize || end < start) {
+    let start = rangeMatch[1] ? parseInt(rangeMatch[1], 10) : NaN;
+    let end = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : NaN;
+
+    if (isNaN(start) && !isNaN(end)) {
+      // Suffix byte range: bytes=-N
+      if (end <= 0) {
+        res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
+        return;
+      }
+      start = Math.max(0, fileSize - end);
+      end = fileSize - 1;
+    } else if (!isNaN(start) && isNaN(end)) {
+      // Prefix range: bytes=N-
+      end = fileSize - 1;
+    }
+
+    if (isNaN(start) || isNaN(end) || start >= fileSize || end < start) {
       res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
       return;
     }
@@ -618,8 +647,21 @@ app.get('/api/analysis/jobs/:id', authMiddleware, (req, res) => {
   res.json({ success: true, report });
 });
 
+// Middleware to authorize transcript export downloads via signed ticket, Bearer token, or token parameter
+function exportAuthMiddleware(req, res, next) {
+  const secret = (process.env.AUTH_TOKEN || '').trim();
+  if (!secret) return next();
+
+  const safeId = path.parse(req.params.id || '').name;
+  if (req.query.ticket && (isValidMediaTicket(req.query.ticket, safeId) || isValidMediaTicket(req.query.ticket, '*'))) {
+    return next();
+  }
+
+  return authMiddleware(req, res, next);
+}
+
 // Export transcript in SRT, VTT, TXT, or JSON
-app.get('/api/analysis/jobs/:id/export/:format', authMiddleware, (req, res) => {
+app.get('/api/analysis/jobs/:id/export/:format', exportAuthMiddleware, (req, res) => {
   const report = whisperAnalyzer.getTranscript(req.params.id);
   if (!report) {
     return res.status(404).json({ error: 'Transcript report not found' });
@@ -726,11 +768,19 @@ wss.on('connection', (ws, req) => {
       try {
         const data = JSON.parse(message.toString());
         if (data.type === 'auth') {
+          if (!checkAuthRateLimit(req)) {
+            ws.send(JSON.stringify({ type: 'auth_error', message: 'Too many failed authentication attempts. Please try again later.' }));
+            ws.close(4429, 'Too many attempts');
+            return;
+          }
+
           if (isValidToken(data.token)) {
+            clearAuthFailure(req);
             clearTimeout(authTimeout);
             ws.isAuthenticated = true;
             onClientAuthenticated(ws);
           } else {
+            recordAuthFailure(req);
             ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' }));
             ws.close(4401, 'Invalid token');
           }
@@ -833,7 +883,7 @@ function onClientAuthenticated(ws) {
           broadcastControlMessage({ type: 'device_connected', ...payload });
         }
       } else if (data.type === 'scan_devices') {
-        const rawDevices = scanAudioDevices();
+        const rawDevices = scanAudioDevices(true);
         const currentDeviceName = audioCapture.deviceName || getDeviceDisplayName(audioCapture.device);
         const devices = rawDevices.map(d => ({
           ...d,

@@ -261,6 +261,16 @@ class RecordingManager extends EventEmitter {
             fs.unlinkSync(filePath);
             deletedFiles.push(file);
             console.log(`[RecordingManager] 🗑️ Auto-deleted expired recording (> ${this.retentionHours}h): ${file} (Age: ${(ageMs / (3600000)).toFixed(1)}h)`);
+
+            // Also clean up associated transcript file in transcripts/
+            const baseId = path.parse(file).name;
+            const transcriptPath = path.join(this.recordingsDir, 'transcripts', `${baseId}.json`);
+            if (fs.existsSync(transcriptPath)) {
+              try {
+                fs.unlinkSync(transcriptPath);
+                console.log(`[RecordingManager] 🗑️ Auto-deleted associated transcript: ${baseId}.json`);
+              } catch {}
+            }
           }
         } catch {
           // ignore individual file errors
@@ -390,6 +400,16 @@ class RecordingManager extends EventEmitter {
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
       console.log(`[RecordingManager] Deleted recording: ${safeName}`);
+
+      // Also clean up associated transcript file in transcripts/
+      const baseId = path.parse(safeName).name;
+      const transcriptPath = path.join(this.recordingsDir, 'transcripts', `${baseId}.json`);
+      if (fs.existsSync(transcriptPath)) {
+        try {
+          fs.unlinkSync(transcriptPath);
+          console.log(`[RecordingManager] Deleted associated transcript: ${baseId}.json`);
+        } catch {}
+      }
       return true;
     }
     return false;
