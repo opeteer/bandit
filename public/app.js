@@ -491,12 +491,12 @@
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
 
-      // Clear background
-      canvasCtx.fillStyle = '#06090f';
+      // Clear background (true jet black)
+      canvasCtx.fillStyle = '#000000';
       canvasCtx.fillRect(0, 0, width, height);
 
       // Draw subtle grid lines
-      canvasCtx.strokeStyle = 'rgba(36, 48, 72, 0.4)';
+      canvasCtx.strokeStyle = '#1a1a1a';
       canvasCtx.lineWidth = 1;
       canvasCtx.beginPath();
       canvasCtx.moveTo(0, height / 2);
@@ -505,7 +505,7 @@
 
       if (!analyserNode || !isPlaying) {
         // Idle flat line
-        canvasCtx.strokeStyle = '#243048';
+        canvasCtx.strokeStyle = '#262626';
         canvasCtx.beginPath();
         canvasCtx.moveTo(0, height / 2);
         canvasCtx.lineTo(width, height / 2);
@@ -515,13 +515,12 @@
       }
 
       if (visualizerMode === 'waveform') {
-        // Oscilloscope waveform rendering
+        // Oscilloscope waveform rendering - crisp high-contrast stark white, zero neon glow
         analyserNode.getByteTimeDomainData(timeBuffer);
 
         canvasCtx.lineWidth = 2;
-        canvasCtx.strokeStyle = '#00ff88';
-        canvasCtx.shadowBlur = 10;
-        canvasCtx.shadowColor = '#00ff88';
+        canvasCtx.strokeStyle = '#ffffff';
+        canvasCtx.shadowBlur = 0;
         canvasCtx.beginPath();
 
         const sliceWidth = width / timeBuffer.length;
@@ -544,14 +543,14 @@
         }
 
         canvasCtx.stroke();
-        canvasCtx.shadowBlur = 0; // reset glow
+        canvasCtx.shadowBlur = 0;
 
         // Calculate RMS for VU meter
         const rms = Math.sqrt(sumSquares / timeBuffer.length);
         updateVuMeter(rms);
 
       } else {
-        // Frequency spectrum bars rendering
+        // Frequency spectrum bars rendering - bold solid tactical orange, zero gradients
         analyserNode.getByteFrequencyData(freqBuffer);
 
         const barCount = 64;
@@ -569,12 +568,7 @@
           const norm = value / 255.0;
           sumSquares += norm * norm;
 
-          const gradient = canvasCtx.createLinearGradient(0, y, 0, height);
-          gradient.addColorStop(0, '#00d4ff');
-          gradient.addColorStop(0.7, '#00ff88');
-          gradient.addColorStop(1, '#1a2234');
-
-          canvasCtx.fillStyle = gradient;
+          canvasCtx.fillStyle = '#ff6600';
           canvasCtx.fillRect(x, y, barWidth, barHeight);
         }
 
@@ -1165,7 +1159,7 @@
       <div class="mic-card-footer">
         <div class="mic-card-badges">
           <span class="mic-badge driver">${driverLabel}</span>
-          ${dev.isEasyEffects ? '<span class="mic-badge" style="color:var(--accent-purple);border-color:rgba(180,90,255,0.3)">EASYEFFECTS</span>' : ''}
+          ${dev.isEasyEffects ? '<span class="mic-badge easyeffects">EASYEFFECTS</span>' : ''}
         </div>
         <button class="btn btn-sm btn-select-mic${isCurrentActive ? ' active-btn' : ''}" data-device="${escapeHtml(dev.id)}" data-driver="${escapeHtml(dev.driver || 'auto')}">
           ${isCurrentActive ? '✓ Connected' : 'Select Mic'}
@@ -2009,16 +2003,16 @@
     if (!whisperEngineBadge) return;
     if (cfg.activeEngine === 'local_whisper') {
       whisperEngineBadge.textContent = '● LOCAL WHISPER (SMALL)';
-      whisperEngineBadge.style.color = '#00f0ff';
-      whisperEngineBadge.style.borderColor = 'rgba(0, 240, 255, 0.4)';
+      whisperEngineBadge.style.color = '#ff6600';
+      whisperEngineBadge.style.borderColor = '#ff6600';
     } else if (cfg.activeEngine === 'openai_cloud') {
       whisperEngineBadge.textContent = '☁️ OPENAI CLOUD (WHISPER-1)';
-      whisperEngineBadge.style.color = '#00ff88';
-      whisperEngineBadge.style.borderColor = 'rgba(0, 255, 136, 0.4)';
+      whisperEngineBadge.style.color = '#ffffff';
+      whisperEngineBadge.style.borderColor = '#ffffff';
     } else {
       whisperEngineBadge.textContent = '● LOCAL PREVIEW (SIMULATION)';
-      whisperEngineBadge.style.color = '#ffb703';
-      whisperEngineBadge.style.borderColor = 'rgba(255, 183, 3, 0.4)';
+      whisperEngineBadge.style.color = '#ffb700';
+      whisperEngineBadge.style.borderColor = '#ffb700';
     }
 
     if (whisperModelBadge) {
