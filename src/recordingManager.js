@@ -105,6 +105,17 @@ class RecordingManager extends EventEmitter {
         stdio: ['pipe', 'ignore', 'pipe']
       });
 
+      this.currentProcess.on('error', (err) => {
+        console.error('[RecordingManager] FFmpeg encoder process error:', err.message);
+        this.currentProcess = null;
+      });
+
+      if (this.currentProcess.stdin) {
+        this.currentProcess.stdin.on('error', (err) => {
+          // Ignore stream write / EPIPE errors when child process terminates
+        });
+      }
+
       this.currentProcess.stderr.on('data', (data) => {
         console.error(`[RecordingManager FFmpeg stderr]: ${data.toString().trim()}`);
       });
@@ -210,7 +221,7 @@ class RecordingManager extends EventEmitter {
       this.startNewSegment();
     }
 
-    if (!this.currentProcess || !this.currentProcess.stdin || this.currentProcess.stdin.destroyed) {
+    if (!this.currentProcess || !this.currentProcess.stdin || this.currentProcess.stdin.destroyed || !this.currentProcess.stdin.writable) {
       return;
     }
 

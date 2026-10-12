@@ -400,11 +400,24 @@
     const numSamples = int16Array.length;
     if (numSamples === 0) return;
 
-    const audioBuffer = audioCtx.createBuffer(1, numSamples, streamConfig.sampleRate);
-    const channelData = audioBuffer.getChannelData(0);
+    const numChannels = streamConfig.channels || 1;
+    const frames = Math.floor(numSamples / numChannels);
+    if (frames === 0) return;
 
-    for (let i = 0; i < numSamples; i++) {
-      channelData[i] = int16Array[i] / 32768.0;
+    const audioBuffer = audioCtx.createBuffer(numChannels, frames, streamConfig.sampleRate);
+
+    if (numChannels === 1) {
+      const channelData = audioBuffer.getChannelData(0);
+      for (let i = 0; i < frames; i++) {
+        channelData[i] = int16Array[i] / 32768.0;
+      }
+    } else {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const channelData = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < frames; i++) {
+          channelData[i] = int16Array[i * numChannels + ch] / 32768.0;
+        }
+      }
     }
 
     const now = audioCtx.currentTime;
@@ -688,6 +701,16 @@
         securityBadge.className = 'badge status-badge';
         securityText.textContent = 'INVALID TOKEN';
         openAuthModal('Access token was rejected by host. Please enter the correct token.');
+        return;
+      }
+
+      if (event.code === 4429) {
+        // Rate limited
+        updateConnectionUI('disconnected', 'RATE LIMITED');
+        securityBadge.className = 'badge status-badge';
+        securityText.textContent = 'RATE LIMITED';
+        showToast('Too many authentication attempts. Please wait 5 minutes before reconnecting.', 'error');
+        openAuthModal('Too many failed authentication attempts. Please wait 5 minutes before trying again.');
         return;
       }
 
@@ -1351,7 +1374,8 @@
   async function loadDevices() {
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/devices?token=${encodeURIComponent(token)}`);
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch('/api/devices', { headers });
       if (res.ok) {
         const data = await res.json();
         renderAllMicCards(data.devices, data.currentDevice);
@@ -1430,7 +1454,8 @@
   async function checkServerStatus() {
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/status?token=${encodeURIComponent(token)}`);
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch('/api/status', { headers });
       if (res.ok) {
         const data = await res.json();
         if (data.system) {
@@ -1642,7 +1667,7 @@
   async function loadRecordings() {
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/recordings?token=${encodeURIComponent(token)}`, {
+      const res = await fetch('/api/recordings', {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       if (res.ok) {
@@ -1769,7 +1794,7 @@
         }
       }
     } catch {}
-    return `/api/recordings/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+    return `/api/recordings/${encodeURIComponent(filename)}`;
   }
 
   async function playRecording(filename) {
@@ -1968,7 +1993,7 @@
   async function loadAnalysisConfig() {
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+      const res = await fetch('/api/analysis/config', {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       if (res.ok) {
@@ -2009,7 +2034,7 @@
 
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/analysis/live-snapshot?token=${encodeURIComponent(token)}`, {
+      const res = await fetch('/api/analysis/live-snapshot', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2048,7 +2073,7 @@
 
     const token = getStoredToken();
     try {
-      const res = await fetch(`/api/analysis/transcribe?token=${encodeURIComponent(token)}`, {
+      const res = await fetch('/api/analysis/transcribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2374,7 +2399,7 @@
     btnConfigWhisper.addEventListener('click', async () => {
       const token = getStoredToken();
       try {
-        const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+        const res = await fetch('/api/analysis/config', {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
         if (res.ok) {
@@ -2409,7 +2434,7 @@
         minSegmentSec: parseFloat(cfgMinSegmentSec?.value || '0.8')
       };
       try {
-        const res = await fetch(`/api/analysis/config?token=${encodeURIComponent(token)}`, {
+        const res = await fetch('/api/analysis/config', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

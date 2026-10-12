@@ -26,6 +26,11 @@ const AUTH_TOKEN = (process.env.AUTH_TOKEN || '').trim();
 const app = express();
 app.disable('x-powered-by');
 
+// Trust Proxy Configuration for Reverse Proxy / Tunnel Deployments (NET-PROXY-01)
+if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Security Headers (SEC-05)
 app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
