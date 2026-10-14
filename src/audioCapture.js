@@ -33,7 +33,8 @@ class AudioCapture extends EventEmitter {
 
     // Auto-search for microphone when missing
     this.autoSearchMic = process.env.AUTO_SEARCH_MIC !== 'false';
-    this.searchIntervalMs = parseInt(process.env.MIC_SEARCH_INTERVAL || '3000', 10);
+    this.searchIntervalMs = parseInt(options.searchIntervalMs || process.env.MIC_SEARCH_INTERVAL || '3000', 10);
+    this.targetDevice = options.device || process.env.AUDIO_DEVICE || 'auto';
     this.isSearching = false;
     this.searchCount = 0;
     this.searchIntervalTimer = null;
@@ -100,9 +101,28 @@ class AudioCapture extends EventEmitter {
 
     if (driver === 'alsa') {
       if (!device || device === 'auto') device = 'default';
-      inputArgs.push('-f', 'alsa', '-i', device);
+      // Normalize raw hw: to plughw: for automated format, rate, and channel adaptation
+      let alsaDev = device;
+      if (alsaDev.startsWith('hw:')) {
+        alsaDev = 'plug' + alsaDev;
+      }
+      inputArgs.push('-f', 'alsa');
+      if (this.channels) {
+        inputArgs.push('-channels', String(this.channels));
+      }
+      if (this.sampleRate) {
+        inputArgs.push('-sample_rate', String(this.sampleRate));
+      }
+      inputArgs.push('-i', alsaDev);
     } else if (driver === 'pulse') {
-      inputArgs.push('-f', 'pulse', '-i', device || 'default');
+      inputArgs.push('-f', 'pulse');
+      if (this.channels) {
+        inputArgs.push('-channels', String(this.channels));
+      }
+      if (this.sampleRate) {
+        inputArgs.push('-sample_rate', String(this.sampleRate));
+      }
+      inputArgs.push('-i', device || 'default');
     } else if (driver === 'dshow') {
       let dshowDev = device;
       if (!dshowDev.startsWith('audio=')) {
@@ -416,7 +436,7 @@ class AudioCapture extends EventEmitter {
 
     this.searchIntervalTimer = setInterval(() => {
       this.searchCount++;
-      const candidate = findAvailableMicrophone();
+      const candidate = findAvailableMicrophone(this.targetDevice || this.device);
 
       if (candidate) {
         console.log(`[AudioCapture] 🎤 Physical microphone detected: "${candidate.name}" (${candidate.id})! Auto-connecting...`);
@@ -581,6 +601,7 @@ class AudioCapture extends EventEmitter {
     this.stop();
 
     if (newOptions.device) {
+      this.targetDevice = newOptions.device;
       this.device = newOptions.device;
       this.currentDevice = newOptions.device;
       this.isFallingBack = false;

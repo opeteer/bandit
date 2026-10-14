@@ -326,22 +326,29 @@ app.post('/api/capture/device', authMiddleware, (req, res) => {
 
   const devices = scanAudioDevices();
   const validIds = devices.map(d => d.id);
-  if (device !== 'auto' && device !== 'test' && !validIds.includes(device)) {
+  const matched = devices.find(d => {
+    if (d.id === device) return true;
+    const dHw = d.id.replace('plughw:', 'hw:');
+    const devHw = device.replace('plughw:', 'hw:');
+    return dHw === devHw;
+  });
+
+  if (device !== 'auto' && device !== 'test' && !validIds.includes(device) && !matched) {
     return res.status(400).json({
       error: 'Invalid audio device',
       validDevices: ['auto', ...validIds]
     });
   }
 
-  const matched = devices.find(d => d.id === device);
-  const deviceName = matched ? matched.name : getDeviceDisplayName(device);
+  const targetDev = matched ? matched.id : device;
+  const deviceName = matched ? matched.name : getDeviceDisplayName(targetDev);
   const finalDriver = driver || (matched?.driver || 'auto');
 
-  console.log(`[Server] Switching audio device to: ${deviceName} (${device})`);
-  audioCapture.restart({ device, driver: finalDriver, name: deviceName });
+  console.log(`[Server] Switching audio device to: ${deviceName} (${targetDev})`);
+  audioCapture.restart({ device: targetDev, driver: finalDriver, name: deviceName });
 
   const payload = {
-    device,
+    device: targetDev,
     deviceName,
     name: deviceName,
     driver: finalDriver
@@ -871,15 +878,21 @@ function onClientAuthenticated(ws) {
       } else if (data.type === 'switch_device' || data.type === 'set_device') {
         if (data.device) {
           const devices = scanAudioDevices();
-          const matched = devices.find(d => d.id === data.device);
-          const deviceName = matched ? matched.name : getDeviceDisplayName(data.device);
+          const matched = devices.find(d => {
+            if (d.id === data.device) return true;
+            const dHw = d.id.replace('plughw:', 'hw:');
+            const devHw = data.device.replace('plughw:', 'hw:');
+            return dHw === devHw;
+          });
+          const targetDev = matched ? matched.id : data.device;
+          const deviceName = matched ? matched.name : getDeviceDisplayName(targetDev);
           const finalDriver = data.driver || (matched?.driver || 'auto');
 
-          console.log(`[WebSocket] Switching audio device to: ${deviceName} (${data.device})`);
-          audioCapture.restart({ device: data.device, driver: finalDriver, name: deviceName });
+          console.log(`[WebSocket] Switching audio device to: ${deviceName} (${targetDev})`);
+          audioCapture.restart({ device: targetDev, driver: finalDriver, name: deviceName });
 
           const payload = {
-            device: data.device,
+            device: targetDev,
             deviceName,
             name: deviceName,
             driver: finalDriver

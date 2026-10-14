@@ -45,12 +45,14 @@ function scanAudioDevices(forceRefresh = false) {
           const cardName = match[2].trim();
           const devNum = match[3];
           const devDesc = match[4].trim();
+          const isUsb = cardName.toLowerCase().includes('usb') || devDesc.toLowerCase().includes('usb');
           devices.push({
-            id: `hw:${cardNum},${devNum}`,
+            id: `plughw:${cardNum},${devNum}`,
             driver: 'alsa',
             name: `${cardName} (${devDesc})`,
-            description: `ALSA Direct Hardware (card ${cardNum}, device ${devNum})`,
-            isDefault: cardNum === '0' || cardNum === '1'
+            description: `ALSA Plug Hardware (card ${cardNum}, device ${devNum})`,
+            isDefault: isUsb || cardNum === '0' || cardNum === '1',
+            isUsb
           });
         }
       }
@@ -222,12 +224,26 @@ function findAvailableMicrophone(preferredDevice = null) {
 
   // If a preferred device was requested and exists
   if (preferredDevice && preferredDevice !== 'auto' && preferredDevice !== 'test') {
-    const found = physical.find(d => d.id === preferredDevice || d.id === `audio="${preferredDevice}"`);
+    const normPreferred = String(preferredDevice).replace(/^audio=/, '').replace(/^"/, '').replace(/"$/, '');
+    const found = physical.find(d => {
+      if (d.id === preferredDevice || d.id === `audio="${preferredDevice}"`) return true;
+      if (d.id === normPreferred) return true;
+      const dHw = d.id.replace('plughw:', 'hw:');
+      const prefHw = normPreferred.replace('plughw:', 'hw:');
+      if (dHw === prefHw) return true;
+      return false;
+    });
     if (found) return found;
   }
 
-  // On Linux, prioritize direct hardware devices (e.g. hw:1,0)
-  const hwDevice = physical.find(d => d.id.startsWith('hw:'));
+  // Prioritize dedicated USB microphones over onboard analog cards
+  const usbDevice = physical.find(d => d.isUsb || d.name?.toLowerCase().includes('usb') || d.id?.toLowerCase().includes('usb'));
+  if (usbDevice) {
+    return usbDevice;
+  }
+
+  // Next, on Linux prioritize ALSA hardware devices (plughw: or hw:)
+  const hwDevice = physical.find(d => d.id.startsWith('plughw:') || d.id.startsWith('hw:'));
   if (hwDevice) {
     return hwDevice;
   }
@@ -246,7 +262,14 @@ function getDeviceDisplayName(deviceId) {
 
   try {
     const devices = scanAudioDevices();
-    const matched = devices.find(d => d.id === deviceId || d.id === `audio="${deviceId}"` || (d.id && deviceId.includes(d.id)));
+    const normId = String(deviceId).replace(/^audio=/, '').replace(/^"/, '').replace(/"$/, '');
+    const matched = devices.find(d => {
+      if (d.id === deviceId || d.id === `audio="${deviceId}"` || d.id === normId) return true;
+      const dHw = d.id.replace('plughw:', 'hw:');
+      const idHw = normId.replace('plughw:', 'hw:');
+      if (dHw === idHw) return true;
+      return Boolean(d.id && deviceId.includes(d.id));
+    });
     if (matched && matched.name) {
       return matched.name;
     }

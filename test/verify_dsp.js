@@ -68,7 +68,7 @@ async function ensureServerRunning() {
     const serverProc = spawn('node', ['server.js'], {
       cwd: __dirname + '/..',
       stdio: 'inherit',
-      env: { ...process.env, PORT: TEST_PORT }
+      env: { ...process.env, PORT: TEST_PORT, AUTH_TOKEN: TEST_TOKEN }
     });
 
     let exitedEarly = false;

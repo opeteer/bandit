@@ -64,7 +64,8 @@ async function ensureServerRunning() {
     console.log('[Test Setup] Starting server instance for verification...');
     const serverProc = spawn('node', ['server.js'], {
       cwd: __dirname + '/..',
-      stdio: 'inherit'
+      stdio: 'inherit',
+      env: { ...process.env, AUTH_TOKEN: TEST_TOKEN }
     });
     // Wait for server to bind
     for (let i = 0; i < 20; i++) {
