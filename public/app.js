@@ -1712,7 +1712,6 @@
           <td style="text-align: right;">
             <div class="rec-actions">
               <button class="btn-rec btn-play-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Play recording ${escapeHtml(rec.filename)}">▶ Play</button>
-              <button class="btn-rec btn-analyze-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Analyze recording ${escapeHtml(rec.filename)}">🧠 Analyze</button>
               <button class="btn-rec btn-save-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Save recording ${escapeHtml(rec.filename)}">⬇ Save</button>
               ${!isCurrent ? `<button class="btn-rec btn-del-rec" data-file="${escapeHtml(rec.filename)}" aria-label="Delete recording ${escapeHtml(rec.filename)}">🗑 Del</button>` : ''}
             </div>

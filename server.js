@@ -53,6 +53,9 @@ const wss = new WebSocketServer({
   }
 });
 
+// Audio Analysis & Whisper Feature Flag (disabled by default)
+const ENABLE_AUDIO_ANALYSIS = process.env.ENABLE_AUDIO_ANALYSIS === 'true';
+
 // Initialize Audio Capture Supervisor
 const audioCapture = new AudioCapture({
   device: process.env.AUDIO_DEVICE || 'auto',
@@ -60,7 +63,8 @@ const audioCapture = new AudioCapture({
   sampleRate: process.env.SAMPLE_RATE || '24000',
   channels: process.env.CHANNELS || '1',
   chunkMs: process.env.CHUNK_MS || '40',
-  dspPreset: process.env.DSP_PRESET || 'broadcast'
+  dspPreset: process.env.DSP_PRESET || 'broadcast',
+  enableRollingBuffer: ENABLE_AUDIO_ANALYSIS
 });
 
 // Initialize 48-Hour Automatic Recording Manager
@@ -75,15 +79,15 @@ const recordingManager = new RecordingManager({
   channels: process.env.CHANNELS || '1'
 });
 
-// Initialize Local Whisper STT & Audio Analysis Engine
-const whisperAnalyzer = new WhisperAnalyzer({
+// Initialize Local Whisper STT & Audio Analysis Engine (if enabled)
+const whisperAnalyzer = ENABLE_AUDIO_ANALYSIS ? new WhisperAnalyzer({
   whisperBaseUrl: process.env.WHISPER_BASE_URL || 'http://localhost:9099/v1',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   model: process.env.WHISPER_MODEL || 'small',
   maxSpeakers: process.env.WHISPER_MAX_SPEAKERS || '4',
   minSegmentSec: process.env.WHISPER_MIN_SEGMENT_SEC || '0.8',
   recordingsDir: process.env.RECORDINGS_DIR || path.join(__dirname, 'recordings')
-});
+}) : null;
 
 const clients = new Set();
 let onDemandStopTimeout = null;
@@ -534,9 +538,14 @@ app.post('/api/recordings/toggle', authMiddleware, (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// Audio Analysis & OpenAI Whisper STT Endpoints
+// Audio Analysis & OpenAI Whisper STT Endpoints (Conditional)
 // -----------------------------------------------------------------------------
 
+if (!ENABLE_AUDIO_ANALYSIS) {
+  app.use('/api/analysis', (req, res) => {
+    res.status(404).json({ error: 'Sound analyzer is disabled', disabled: true });
+  });
+} else {
 // Get Whisper engine status and configuration
 app.get('/api/analysis/config', authMiddleware, async (req, res) => {
   try {
@@ -721,6 +730,7 @@ app.delete('/api/analysis/jobs/:id', authMiddleware, (req, res) => {
     res.status(404).json({ error: 'Transcript report not found' });
   }
 });
+}
 
 // -----------------------------------------------------------------------------
 // Centralized API Error & 404 Handler Middleware
@@ -844,6 +854,8 @@ function onClientAuthenticated(ws) {
     isSearching: audioCapture.isSearching,
     isFallback: audioCapture.isFallingBack,
     recording: recordingManager.listRecordings().stats,
+    soundAnalyzerEnabled: ENABLE_AUDIO_ANALYSIS,
+    audioAnalysisEnabled: ENABLE_AUDIO_ANALYSIS,
     listeners: clients.size
   }));
 

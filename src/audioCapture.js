@@ -53,7 +53,8 @@ class AudioCapture extends EventEmitter {
     this.errorLog = [];
     this.buffer = Buffer.alloc(0);
 
-    // Rolling circular PCM ring buffer for instant STT audio analysis (30s)
+    // Rolling circular PCM ring buffer for STT audio analysis (disabled by default)
+    this.enableRollingBuffer = options.enableRollingBuffer !== undefined ? Boolean(options.enableRollingBuffer) : (process.env.ENABLE_AUDIO_ANALYSIS === 'true');
     this.maxRollingBufferSeconds = 30;
     this.maxRollingBytes = Math.floor(this.sampleRate * this.channels * this.bytesPerSample * this.maxRollingBufferSeconds);
     this.recentAudioBuffer = Buffer.alloc(0);
@@ -298,10 +299,12 @@ class AudioCapture extends EventEmitter {
     this.totalBytesCaptured += data.length;
     this.buffer = Buffer.concat([this.buffer, data]);
 
-    // Maintain rolling circular ring buffer of last 30 seconds
-    this.recentAudioBuffer = Buffer.concat([this.recentAudioBuffer, data]);
-    if (this.recentAudioBuffer.length > this.maxRollingBytes) {
-      this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
+    // Maintain rolling circular ring buffer of last 30 seconds (if enabled)
+    if (this.enableRollingBuffer) {
+      this.recentAudioBuffer = Buffer.concat([this.recentAudioBuffer, data]);
+      if (this.recentAudioBuffer.length > this.maxRollingBytes) {
+        this.recentAudioBuffer = this.recentAudioBuffer.subarray(this.recentAudioBuffer.length - this.maxRollingBytes);
+      }
     }
 
     const minChunk = Math.max(128, this.chunkSizeBytes || 1920);
@@ -684,6 +687,9 @@ class AudioCapture extends EventEmitter {
    * @returns {Buffer} Raw PCM s16le audio buffer
    */
   getRecentAudioBuffer(seconds = 30) {
+    if (!this.enableRollingBuffer || !this.recentAudioBuffer || this.recentAudioBuffer.length === 0) {
+      return Buffer.alloc(0);
+    }
     const sec = Math.max(1, Math.min(seconds, this.maxRollingBufferSeconds));
     const reqBytes = Math.floor(this.sampleRate * this.channels * this.bytesPerSample * sec);
     if (this.recentAudioBuffer.length <= reqBytes) {

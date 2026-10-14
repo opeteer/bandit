@@ -56,7 +56,7 @@
         <span class="nav-icon">📼</span>
         <span class="nav-text">RECORDING VAULT</span>
       </button>
-      <button class="nav-tab" data-tab="analysis" id="navTabAnalysis" role="tab" aria-selected="false" aria-controls="viewAnalysis">
+      <button class="nav-tab" data-tab="analysis" id="navTabAnalysis" role="tab" aria-selected="false" aria-controls="viewAnalysis" style="display: none;">
         <span class="nav-icon">🧠</span>
         <span class="nav-text">AUDIO ANALYSIS</span>
         <span class="badge badge-accent">NEW</span>
@@ -75,7 +75,7 @@
               <h2>LIVE FREQUENCY & WAVEFORM MONITOR</h2>
             </div>
             <div class="visualizer-controls">
-              <button class="btn btn-sm btn-accent" id="btnQuick30sLive" title="Analyze last 30 seconds of live mic using Whisper">⚡ Analyze Last 30s Mic</button>
+              <button class="btn btn-sm btn-accent" id="btnQuick30sLive" title="Analyze last 30 seconds of live mic using Whisper" style="display: none;">⚡ Analyze Last 30s Mic</button>
               <div class="mode-toggle">
                 <button class="mode-btn active" data-mode="waveform" id="btnModeWaveform">Oscilloscope</button>
                 <button class="mode-btn" data-mode="spectrum" id="btnModeSpectrum">Spectrum</button>
@@ -433,8 +433,8 @@
       </div>
       <!-- End of Tab 2: 48-Hour Automatic Recording Vault View -->
 
-      <!-- Tab 3: Audio Analysis & Whisper STT View -->
-      <div class="tab-view" id="viewAnalysis" role="tabpanel" aria-labelledby="navTabAnalysis">
+      <!-- Tab 3: Audio Analysis & Whisper STT View (Disabled) -->
+      <div class="tab-view" id="viewAnalysis" role="tabpanel" aria-labelledby="navTabAnalysis" style="display: none;">
         <section class="card analysis-card" id="analysisCard">
           <div class="card-header">
             <div class="section-title">
@@ -672,8 +672,8 @@
     </div>
   </div>
 
-  <!-- Whisper Settings Modal -->
-  <div class="modal-backdrop" id="whisperModal" role="dialog" aria-modal="true" aria-labelledby="whisperModalTitle">
+  <!-- Whisper Settings Modal (Disabled) -->
+  <div class="modal-backdrop" id="whisperModal" role="dialog" aria-modal="true" aria-labelledby="whisperModalTitle" style="display: none;">
     <div class="modal">
       <div class="modal-header">
         <h3 id="whisperModalTitle">WHISPER STT CONFIGURATION</h3>

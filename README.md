@@ -10,15 +10,12 @@
 - **Cross-Platform Microphone Ingestion & Auto-Discovery**: Piped FFmpeg capture supporting **Linux** (ALSA / PulseAudio / PipeWire), **Windows** (DirectShow), and **macOS** (AVFoundation). **Continuously polls the host in the background if no microphone is found**, seamlessly auto-connects to newly plugged-in physical devices on the fly, and prominently displays the detected hardware device name (e.g. `PCH [HDA Intel PCH] (ALC257 Analog)`) across the dashboard and header telemetry!
 - **EasyEffects DSP Sound Rack**: Real-time input sound processing modeled after Linux EasyEffects technology: Neural Noise Suppression, Downward Noise Gate, Vocal Presence Parametric EQ, Broadcast Dynamic Compressor, De-Esser, Speech Normalization, and Lookahead Peak Limiter.
 - **Surveillance Presets**: Instant 1-click sound profiles: **Whisper & Covert Surveillance** (high sensitivity AGC), **Clean Voice & Broadcast**, **Extreme Noise Rejection**, and **Raw Bypass**.
-- **OpenAI Whisper Speech-to-Text & Diarization**: Full-featured local speech recognition container (`bandit-whisper`) powered by `faster-whisper` (`small` model with `int8` CPU quantization). Automatically clusters and identifies **up to 4 speakers** with an enforced **minimum segment threshold of 0.8s** to eliminate false micro-chatter speaker flipping.
-- **Word-Level Timestamps & Synchronized Player**: Millisecond-accurate word alignment with real-time interactive karaoke word glow during playback and 1-click seek-to-word navigation.
-- **Quick 30-Second Live Mic Analysis**: In-memory circular rolling PCM ring buffer retains the latest 30 seconds of live microphone audio, transcribing immediate conversations at the touch of a button.
 - **Autonomous 48-Hour Rolling Recording Vault**: 24/7 background audio recording into standardized 1-hour segments with automatic rolling 48-hour retention pruning and HTTP 206 Partial Content in-browser scrubbing.
 - **Microphone Amplification**: Built-in 1.0x – 5.0x Gain Boost slider to amplify faint room whispers and distant ambient audio.
 - **Live Canvas Visualizer & VU Meter**: Dual-mode 60fps real-time visualizer (Oscilloscope Waveform & Frequency Spectrum Bars) powered by `AnalyserNode`, along with an active dB VU meter and sound-detection LED indicator.
 - **Access Security**: Constant-time timing-safe token authentication protecting REST endpoints and WebSocket handshakes—ideal for zero-trust exposure via Cloudflare Tunnel, Tailscale, or ngrok.
-- **Multi-Format Subtitle Exporters**: Export analysis reports directly into `.srt`, `.vtt`, `.txt`, and `.json`.
-- **Docker Compose Ready**: One-command containerized deployment running both the `bandit` host streaming application and `bandit-whisper` local speech recognition engine.
+- **Lightweight Standalone Architecture**: Heavy-duty Whisper STT container and acoustic sound analyzer disabled by default to eliminate ~1.2 GB model overhead, minimizing RAM and CPU usage.
+- **Docker Compose Ready**: One-command lightweight containerized deployment running the standalone `bandit` host streaming application.
 
 ---
 
@@ -27,11 +24,11 @@
 ```text
 bandit/
 ├── .dockerignore              # Container build ignore rules
-├── .env.example               # Template environment configuration (Whisper & Vault settings)
+├── .env.example               # Template environment configuration
 ├── .gitignore                 # Git ignore rules
 ├── Dockerfile                 # Debian-slim Node.js + FFmpeg container image
-├── docker-compose.yml         # Compose definition for bandit + bandit-whisper services
-├── package.json               # Node.js dependencies and 5-suite test scripts
+├── docker-compose.yml         # Compose definition for bandit service
+├── package.json               # Node.js dependencies and test scripts
 ├── README.md                  # Comprehensive setup and operations manual
 ├── server.js                  # Main Express + WebSocket server & stream coordinator
 ├── recordings/                # Rolling 48-hour audio segments vault

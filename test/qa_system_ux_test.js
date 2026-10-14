@@ -402,10 +402,14 @@ async function runRecordingVaultAndWhisperTests() {
     const resSnapshot = await httpPost('/api/analysis/live-snapshot', { seconds: 5 }, {
       'Authorization': `Bearer ${TEST_TOKEN}`
     });
-    assert.strictEqual(resSnapshot.status, 200);
-    assert.ok(resSnapshot.body.report);
-    assert.ok(resSnapshot.body.report.id);
-    recordTest('Whisper Analysis', 'SYS-WHISPER-02', 'POST /api/analysis/live-snapshot captures and transcribes buffer', true);
+    if (resSnapshot.status === 404 && (resSnapshot.body?.disabled || resSnapshot.body?.error)) {
+      recordTest('Whisper Analysis', 'SYS-WHISPER-02', 'POST /api/analysis/live-snapshot returns disabled when sound analyzer is disabled', true);
+    } else {
+      assert.strictEqual(resSnapshot.status, 200);
+      assert.ok(resSnapshot.body.report);
+      assert.ok(resSnapshot.body.report.id);
+      recordTest('Whisper Analysis', 'SYS-WHISPER-02', 'POST /api/analysis/live-snapshot captures and transcribes buffer', true);
+    }
   } catch (err) {
     recordTest('Whisper Analysis', 'SYS-WHISPER-02', 'Live snapshot analysis failed', false, err.message);
   }

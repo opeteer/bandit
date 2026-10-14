@@ -10,8 +10,6 @@ services:
       - "${PORT:-8099}:8099"
     env_file:
       - .env
-    environment:
-      - WHISPER_BASE_URL=${WHISPER_BASE_URL:-http://bandit-whisper:9099/v1}
     # Direct hardware audio passthrough for Linux ALSA
     devices:
       - /dev/snd:/dev/snd
@@ -28,36 +26,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    depends_on:
-      bandit-whisper:
-        condition: service_started
-
-  bandit-whisper:
-    build:
-      context: ./services/whisper
-      dockerfile: Dockerfile
-    image: bandit-whisper:latest
-    container_name: bandit-whisper
-    restart: unless-stopped
-    ports:
-      - "${WHISPER_PORT:-9099}:9099"
-    environment:
-      - PORT=9099
-      - WHISPER_MODEL=small
-      - WHISPER_DEVICE=cpu
-      - WHISPER_COMPUTE_TYPE=int8
-      - WHISPER_MAX_SPEAKERS=4
-      - WHISPER_MIN_SEGMENT_SEC=0.8
-    volumes:
-      - whisper-models:/root/.cache/whisper
-    ipc: host
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-volumes:
-  whisper-models:
-

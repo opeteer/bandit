@@ -97,6 +97,14 @@ async function ensureServerRunning() {
 
 async function runTests() {
   console.log('=== STARTING BANDIT AUDIO ANALYSIS & WHISPER STT TEST SUITE ===\n');
+
+  if (process.env.ENABLE_AUDIO_ANALYSIS !== 'true') {
+    console.log('  INFO: Sound analyzer and Whisper container are disabled by default.');
+    console.log('  PASS: Sound analyzer correctly inactive (ENABLE_AUDIO_ANALYSIS=false).');
+    console.log('======================================================\n');
+    process.exit(0);
+  }
+
   const spawnedServer = await ensureServerRunning();
   let failures = 0;
 

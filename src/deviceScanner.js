@@ -72,9 +72,10 @@ function scanAudioDevices(forceRefresh = false) {
           const desc = match[3];
           // avoid duplicate if already found
           if (!devices.some(d => d.id === devId)) {
+            const isPipewire = devId.toLowerCase().includes('pipewire') || desc.toLowerCase().includes('pipewire');
             devices.push({
               id: devId,
-              driver: 'alsa',
+              driver: isPipewire ? 'pipewire' : (devId.startsWith('plughw:') || devId.startsWith('hw:') ? 'alsa' : 'pulse'),
               name: desc,
               description: `ALSA Source: ${devId}`,
               isDefault: isDef
@@ -234,6 +235,13 @@ function findAvailableMicrophone(preferredDevice = null) {
       return false;
     });
     if (found) return found;
+
+    // If user explicitly selected a USB microphone that is currently disconnected,
+    // do NOT hijack to Card 0 onboard analog noise
+    const isPreferredUsb = normPreferred.toLowerCase().includes('usb') || normPreferred === 'plughw:2,0' || normPreferred === 'hw:2,0';
+    if (isPreferredUsb) {
+      return null;
+    }
   }
 
   // Prioritize dedicated USB microphones over onboard analog cards
@@ -277,7 +285,8 @@ function getDeviceDisplayName(deviceId) {
     // fallback
   }
 
-  return `Microphone (${deviceId})`;
+  const normFallback = String(deviceId).replace(/^hw:/, 'plughw:');
+  return `Microphone (${normFallback})`;
 }
 
 // If run directly from command line
